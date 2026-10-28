@@ -1,7 +1,7 @@
 import { drawScene, createRain } from "./rain.js";
 
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
-const STORE = { settings: "grey.settings", history: "grey.history", avatar: "grey.avatar", bg: "grey.bg" };
+const STORE = { settings: "grey.settings", history: "grey.history", avatar: "grey.avatar", aiAvatar: "grey.aiAvatar", bg: "grey.bg" };
 const REPLY_DELAY = 1100; // 停止輸入多久後對方才回（可以連發好幾則）
 
 const DEFAULTS = {
@@ -55,6 +55,7 @@ function applyLook() {
   photo.classList.toggle("on", !!bg);
 
   $("#ai-name-top").textContent = settings.aiName;
+  paintAvatar($("#ai-avatar-top"), "assistant");
   document.title = settings.aiName;
 }
 
@@ -91,13 +92,21 @@ function bubbleHtml(b) {
   return b.code != null ? `<code style="display:block;white-space:pre;overflow-x:auto">${escapeHtml(b.code)}</code>` : inline(b.text);
 }
 
-function avatarEl(role) {
-  const el = document.createElement("div");
-  el.className = `avatar ${role === "user" ? "me" : "ai"}`;
+function paintAvatar(el, role) {
   if (role === "user") {
     const img = load(STORE.avatar, null);
     el.style.backgroundImage = img ? `url("${img}")` : defaultAvatar;
+  } else {
+    // 沒換過就保留 CSS 的漸層球
+    const img = load(STORE.aiAvatar, null);
+    el.style.background = img ? `center / cover no-repeat url("${img}")` : "";
   }
+}
+
+function avatarEl(role) {
+  const el = document.createElement("div");
+  el.className = `avatar ${role === "user" ? "me" : "ai"}`;
+  paintAvatar(el, role);
   return el;
 }
 
@@ -508,6 +517,14 @@ $("#s-avatar").onchange = async (e) => {
   e.target.value = "";
 };
 $("#s-avatar-reset").onclick = () => localStorage.removeItem(STORE.avatar);
+$("#s-ai-avatar").onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (!save(STORE.aiAvatar, await readImage(f, 256))) alert("圖片太大，存不下。");
+  e.target.value = "";
+  applyLook();
+};
+$("#s-ai-avatar-reset").onclick = () => { localStorage.removeItem(STORE.aiAvatar); applyLook(); };
 $("#s-bg").onchange = async (e) => {
   const f = e.target.files[0];
   if (!f) return;

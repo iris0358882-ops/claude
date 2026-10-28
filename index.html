@@ -18,7 +18,7 @@
 
   <div class="app">
     <header class="topbar glass">
-      <div class="avatar ai small" aria-hidden="true"></div>
+      <div class="avatar ai small" id="ai-avatar-top" aria-hidden="true"></div>
       <div class="who">
         <div class="name" id="ai-name-top">Grey</div>
         <div class="status" id="status">在線</div>
@@ -67,6 +67,11 @@
 
       <fieldset>
         <legend>外觀</legend>
+        <div class="row">
+          <span>對方頭像</span>
+          <label class="file-btn">選擇圖片<input id="s-ai-avatar" type="file" accept="image/*" hidden /></label>
+          <button type="button" class="link" id="s-ai-avatar-reset">還原</button>
+        </div>
         <div class="row">
           <span>我的頭像</span>
           <label class="file-btn">選擇圖片<input id="s-avatar" type="file" accept="image/*" hidden /></label>
