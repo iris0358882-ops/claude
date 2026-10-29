@@ -457,7 +457,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .composer {
   flex: none;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 10px;
   padding: 8px 8px 8px 18px;
   background: var(--card);
@@ -467,6 +467,15 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .composer textarea {
   flex: 1;
+  display: block;
+  min-width: 0;
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 0;
+  height: calc(1.6em + 20px); /* 一行；有打字時由 JS 撐高 */
+  min-height: calc(1.6em + 20px);
+  overflow-y: auto;
   border: 0;
   outline: 0;
   resize: none;
@@ -478,7 +487,12 @@ button, input, textarea, select { font: inherit; color: inherit; }
   max-height: 140px;
   color: var(--ink);
 }
-.composer textarea::placeholder { color: rgba(58, 42, 46, 0.42); }
+.composer textarea::placeholder {
+  color: rgba(58, 42, 46, 0.42);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .send {
   flex: none;
   border: 0;

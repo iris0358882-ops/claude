@@ -881,10 +881,15 @@ async function askDemo(view) {
 // ---------- 輸入框 ----------
 
 function autosize() {
-  input.style.height = "auto";
-  input.style.height = `${input.scrollHeight}px`;
   sendBtn.disabled = !input.value.trim();
+  // 空白時不量高度：iPhone 的 Safari 會把提示字也算進去，量出來太高
+  input.style.height = "";
+  if (!input.value) return;
+  input.style.height = `${input.scrollHeight}px`;
 }
+// 字型晚一點載入、轉向、鍵盤收起來時重量一次
+document.fonts?.ready.then(autosize);
+addEventListener("resize", autosize);
 input.addEventListener("input", autosize);
 input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
