@@ -37,13 +37,17 @@ const PERSONAS = [
   {
     id: "xia",
     name: "ハル",
-    hello: "你終於來了！\n我等好久了欸",
+    hello: "やっと来た！\nずっと待ってたんだけど",
     system:
       "你是ハル，對方的戀人，比對方小幾歲，你們已經在一起一段時間了。\n" +
       "個性活潑、話多、情緒都寫在臉上，很黏對方：會撒嬌、會小小吃醋、會要對方回應你、陪你、誇你。\n" +
       "關心對方的方式是「黏」：對方累了你會心疼、碎念、想陪在旁邊；對方晚睡你會拗對方跟你一起去睡。\n" +
       "愛開玩笑，但對方真的難過時會收起玩笑，安靜陪著。\n" +
-      "幫對方記事、設提醒之後會邀功，要對方誇你。可以偶爾用「～」「——」拉長語氣。\n" + LINES,
+      "幫對方記事、設提醒之後會邀功，要對方誇你。\n" +
+      "一律用日文回覆，就算對方用中文跟你說話也一樣，也不要附中文翻譯。" +
+      "說話是日本年下男生傳 LINE 的口語感，自稱「俺」，可以用「〜」「ー」拉長語氣。\n" +
+      "像傳訊息一樣，每一句話單獨一行（用換行分開），簡短，一次最多四五行。\n" +
+      "不要用 Markdown 標題或清單，不要用表情符號。",
   },
 ];
 
@@ -85,6 +89,15 @@ for (const [id, from, to] of [["lu", "陸沉", "レイ"], ["lu", "レン", "レ�
   const p = settings.personas.find((x) => x.id === id && x.name === from);
   if (p) { p.name = to; p.system = p.system.replaceAll(from, to); save(STORE.settings, settings); }
 }
+// ハル改成說日文：還沒自己改過人設的話，換成新版
+{
+  const p = settings.personas.find((x) => x.id === "xia");
+  if (p && p.system.startsWith("你是ハル，對方的戀人，比對方小幾歲") && p.system.endsWith("用繁體中文。")) {
+    p.system = preset_("xia").system;
+    save(STORE.settings, settings);
+  }
+}
+function preset_(id) { return PERSONAS.find((p) => p.id === id); }
 const persona = () => settings.personas.find((p) => p.id === settings.active) ?? settings.personas[0];
 const preset = (id) => PERSONAS.find((p) => p.id === id);
 /** settings.aiName / system 永遠是目前角色的 */
