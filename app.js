@@ -1,4 +1,4 @@
-const APP_VERSION = "2026.10.29-c"; // 設定最下面會顯示，用來確認手機上是不是新版
+const APP_VERSION = "2026.10.29-d"; // 設定最下面會顯示，用來確認手機上是不是新版
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
 const STORE = {
   settings: "grey.settings", history: "grey.history", bg: "grey.bg",
@@ -19,6 +19,7 @@ const DEFAULTS = {
   blur: 0,
   place: { name: "台北", lat: 25.033, lon: 121.565 },
   font: "huninn",
+  alwaysThink: true,
 };
 
 // 中文字型：都是 Google Fonts 上免費的（中文字型會依用到的字分片下載，不會一次載完）
@@ -81,6 +82,9 @@ const BUTLER_PROMPT = () =>
   "問到待辦或天氣時一定先用工具查，不要憑印象回答。\n" +
   "用工具之後照你原本的語氣簡短回覆，不要把工具結果整段念出來。\n" +
   "每則訊息開頭的（現在時間：…）是系統附上的，用來判斷時間，不是對方打的字。\n" +
+  (settings.alwaysThink
+    ? "每次回覆前都先在思考裡想一想，就算訊息很短也一樣：對方現在大概是什麼心情、想要什麼、你想怎麼回。用你自己的口吻想，簡短就好。\n"
+    : "") +
   (settings.userName && settings.userName !== "我" ? `對方的名字是 ${settings.userName}。` : "");
 
 // ---------- 儲存 ----------
@@ -1023,6 +1027,7 @@ const dlg = $("#settings");
 const fields = {
   aiName: $("#s-ai-name"), userName: $("#s-user-name"),
   system: $("#s-system"), apiKey: $("#s-key"), effort: $("#s-effort"), font: $("#s-font"),
+  alwaysThink: $("#s-think"),
   blur: $("#s-blur"),
 };
 
