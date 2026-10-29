@@ -162,6 +162,18 @@ button, input, textarea, select { font: inherit; color: inherit; }
   color: rgba(70, 40, 48, 0.62);
 }
 
+.sig .speak {
+  margin-left: 8px;
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  background: none;
+  font-size: 9px;
+  letter-spacing: 0;
+  color: var(--crimson);
+  vertical-align: 1px;
+  cursor: pointer;
+}
+
 /* 這一輪的思考：封緘的卡片，揭開才看得到 */
 .sealed {
   position: relative;

@@ -1,4 +1,4 @@
-const APP_VERSION = "2026.10.29-i"; // 設定最下面會顯示，用來確認手機上是不是新版
+const APP_VERSION = "2026.10.29-j"; // 設定最下面會顯示，用來確認手機上是不是新版
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
 const STORE = {
   settings: "grey.settings", history: "grey.history", bg: "grey.bg",
@@ -20,6 +20,7 @@ const DEFAULTS = {
   place: { name: "台北", lat: 25.033, lon: 121.565 },
   font: "huninn",
   welcome: true,
+  autoSpeak: false,
 };
 
 // 中文字型：都是 Google Fonts 上免費的（中文字型會依用到的字分片下載，不會一次載完）
@@ -819,6 +820,16 @@ function renderAssistant(msg = {}) {
         title.textContent = "這一輪想了一些事";
       }
       sig.textContent = `${settings.aiName} · ${fmtTime(t)}`;
+      if (rendered.length && "speechSynthesis" in window) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "speak";
+        btn.setAttribute("aria-label", "唸給我聽");
+        btn.textContent = "▶";
+        btn.onclick = () => speak(rendered.map((el) => el.textContent).join("\n"), btn);
+        sig.append(btn);
+        view.speakBtn = btn;
+      }
       if (!rendered.length && sealed.hidden && acts.hidden) g.remove();
     },
   };
@@ -889,6 +900,7 @@ async function reply() {
     const time = Date.now();
     if (result) {
       history.push({ id: uid(), role: "assistant", time, ...result });
+      if (settings.autoSpeak) setTimeout(() => view.speakBtn?.click(), 0);
       persist();
     }
     view.finish(time);
@@ -1177,7 +1189,7 @@ const dlg = $("#settings");
 const fields = {
   aiName: $("#s-ai-name"), userName: $("#s-user-name"),
   system: $("#s-system"), apiKey: $("#s-key"), effort: $("#s-effort"), font: $("#s-font"),
-  welcome: $("#s-welcome"),
+  welcome: $("#s-welcome"), autoSpeak: $("#s-autospeak"),
   blur: $("#s-blur"),
 };
 
@@ -1410,6 +1422,37 @@ $("#s-del-persona").onclick = () => {
   switchPersona(settings.personas[0].id);
   fillFields();
 };
+
+// ---------- 唸給我聽（手機內建的語音） ----------
+
+let speakingBtn = null;
+function pickVoice(lang) {
+  const voices = speechSynthesis.getVoices();
+  const norm = (v) => v.lang.replace("_", "-").toLowerCase();
+  const wants = lang === "ja-JP" ? ["ja-jp", "ja"] : ["zh-tw", "zh-hant", "zh-hk", "zh-cn", "zh"];
+  for (const w of wants) {
+    const v = voices.find((x) => norm(x).startsWith(w));
+    if (v) return v;
+  }
+  return null;
+}
+function speak(text, btn) {
+  const synth = window.speechSynthesis;
+  if (speakingBtn === btn && synth.speaking) { synth.cancel(); return; } // 再按一次停止
+  synth.cancel();
+  const lang = /[\u3040-\u30ff]/.test(text) ? "ja-JP" : "zh-TW"; // 有假名就用日文唸（ハル）
+  const u = new SpeechSynthesisUtterance(text.replace(/[*`#>]/g, ""));
+  u.lang = lang;
+  const voice = pickVoice(lang);
+  if (voice) u.voice = voice;
+  const reset = () => { if (speakingBtn) speakingBtn.textContent = "▶"; speakingBtn = null; };
+  reset();
+  speakingBtn = btn;
+  btn.textContent = "■";
+  u.onend = u.onerror = () => { if (speakingBtn === btn) reset(); };
+  synth.speak(u);
+}
+if ("speechSynthesis" in window) speechSynthesis.getVoices(); // 讓手機先把聲音清單載入
 
 // ---------- 打開 App 時主動打招呼 ----------
 
