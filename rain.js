@@ -1,6 +1,61 @@
-// 背景上可以開關的效果：玻璃上的雨滴。
+// 背景：一張「雨天窗外」的街景（之後由 CSS 模糊 + 去色），以及玻璃上的雨滴。
 
 const rand = (a, b) => a + Math.random() * (b - a);
+
+/** 畫一張低解析度的街景，交給 CSS blur 變成截圖裡那種朦朧感。 */
+export function drawScene(canvas) {
+  const w = (canvas.width = 360);
+  const h = (canvas.height = 640);
+  const g = canvas.getContext("2d");
+
+  const sky = g.createLinearGradient(0, 0, 0, h);
+  sky.addColorStop(0, "#e9e9e9");
+  sky.addColorStop(0.5, "#d4d4d4");
+  sky.addColorStop(1, "#bdbdbd");
+  g.fillStyle = sky;
+  g.fillRect(0, 0, w, h);
+
+  // 遠處的塔
+  g.fillStyle = "#8a8a8a";
+  g.fillRect(150, 0, 60, 120);
+  g.fillStyle = "#9c9c9c";
+  g.beginPath();
+  g.moveTo(100, 140); g.lineTo(140, 95); g.lineTo(180, 140); g.fill();
+
+  // 主建築：斜屋頂的老房子
+  g.fillStyle = "#6f6f6f";
+  g.beginPath();
+  g.moveTo(-20, 215); g.lineTo(290, 140); g.lineTo(380, 175); g.lineTo(380, 240); g.lineTo(-20, 270);
+  g.fill();
+  const wall = g.createLinearGradient(0, 230, 0, 560);
+  wall.addColorStop(0, "#d9d9d9");
+  wall.addColorStop(1, "#b9b9b9");
+  g.fillStyle = wall;
+  g.fillRect(-10, 250, 380, 300);
+  g.fillStyle = "#8d8d8d";
+  g.fillRect(270, 210, 110, 340);
+
+  // 窗戶
+  g.fillStyle = "#4e4e4e";
+  for (const [x, y, ww, hh] of [
+    [70, 330, 18, 60], [125, 320, 16, 70], [205, 300, 22, 85], [300, 260, 30, 90], [20, 300, 16, 90],
+  ]) g.fillRect(x, y, ww, hh);
+  g.fillStyle = "#5a5a5a";
+  g.fillRect(170, 395, 16, 150);
+
+  // 路燈與人影
+  g.fillStyle = "#3f3f3f";
+  g.fillRect(272, 420, 6, 140);
+  g.beginPath(); g.arc(275, 425, 14, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(300, 540, 26, 60, 0, 0, Math.PI * 2); g.fill();
+
+  // 地面
+  const ground = g.createLinearGradient(0, 540, 0, h);
+  ground.addColorStop(0, "#6c6c6c");
+  ground.addColorStop(1, "#4a4a4a");
+  g.fillStyle = ground;
+  g.fillRect(0, 545, w, h - 545);
+}
 
 /** 一顆雨滴的貼圖：上緣暗、下緣亮，像玻璃上折射的水珠。 */
 function makeSprite() {
