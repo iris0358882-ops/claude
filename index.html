@@ -68,7 +68,10 @@
     </div>
 
     <form id="composer" class="composer" autocomplete="off">
-      <textarea id="input" rows="1" placeholder="給 Claude 發消息…" enterkeyhint="send"></textarea>
+      <div class="grow" id="grow" data-value="">
+        <span class="ph" id="ph" aria-hidden="true">給 Claude 發消息…</span>
+        <textarea id="input" rows="1" aria-label="給 Claude 發消息" enterkeyhint="send"></textarea>
+      </div>
       <button type="submit" class="send" id="send" disabled>Send</button>
     </form>
   </div>
