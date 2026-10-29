@@ -32,6 +32,7 @@ html, body {
   font-family: var(--serif);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation; /* 關掉點兩下放大 */
 }
 
 button, input, textarea, select { font: inherit; color: inherit; }
@@ -722,4 +723,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   .line, .sealed, .sealed.done .stamp, .act, .memo { animation: none; }
+}
+
+/* iPhone 點進字小於 16px 的輸入框會自動放大畫面，所以手機上一律至少 16px */
+@supports (-webkit-touch-callout: none) {
+  input, select, textarea { font-size: max(16px, 1em) !important; }
 }

@@ -1,4 +1,4 @@
-const APP_VERSION = "2026.10.29-g"; // 設定最下面會顯示，用來確認手機上是不是新版
+const APP_VERSION = "2026.10.29-h"; // 設定最下面會顯示，用來確認手機上是不是新版
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
 const STORE = {
   settings: "grey.settings", history: "grey.history", bg: "grey.bg",
