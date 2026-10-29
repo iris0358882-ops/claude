@@ -203,12 +203,30 @@ function hashSeed(str) {
   };
 }
 
+/** 照片、貼圖：用膠帶貼在畫面上 */
 function tape(el, seed, maxTilt = 1.6) {
   const r = hashSeed(seed);
-  el.classList.add("piece", `tape-${"abc"[Math.floor(r() * 3)]}`);
+  el.classList.add("taped", `tape-${"abc"[Math.floor(r() * 3)]}`);
   el.style.setProperty("--tilt", `${((r() * 2 - 1) * maxTilt).toFixed(2)}deg`);
   el.style.setProperty("--tx", `${(25 + r() * 50).toFixed(0)}%`);
   el.style.setProperty("--tr", `${((r() * 2 - 1) * 7).toFixed(1)}deg`);
+  return el;
+}
+
+/** 文字框：本身就是一段紙膠帶，兩端撕成不規則的鋸齒 */
+function strip(el, seed, maxTilt = 1.2) {
+  const r = hashSeed(seed);
+  const n = 6;
+  const left = [];
+  const right = [];
+  for (let i = 0; i <= n; i++) {
+    const y = ((i / n) * 100).toFixed(1);
+    left.push(`${(r() * 7).toFixed(1)}px ${y}%`);
+    right.unshift(`calc(100% - ${(r() * 7).toFixed(1)}px) ${y}%`);
+  }
+  el.classList.add("strip");
+  el.style.setProperty("--edge", `polygon(${[...left, ...right].join(", ")})`);
+  el.style.setProperty("--tilt", `${((r() * 2 - 1) * maxTilt).toFixed(2)}deg`);
   return el;
 }
 
@@ -238,7 +256,7 @@ function lineEl(b, seed) {
   const p = document.createElement("p");
   p.className = isQuestion(b.text) ? "line box" : "line";
   p.innerHTML = `<span class="hl">${inline(b.text)}</span>`;
-  tape(p.firstChild, seed, p.classList.contains("box") ? 1.6 : 0.9);
+  strip(p.firstChild, seed, p.classList.contains("box") ? 1.4 : 0.9);
   return p;
 }
 
@@ -272,7 +290,7 @@ function renderUser(msg) {
       if (b.code != null) p.textContent = b.code;
       else {
         p.innerHTML = `<span class="hl">${inline(b.text)}</span>`;
-        tape(p.firstChild, `${msg.id}:${i}`);
+        strip(p.firstChild, `${msg.id}:${i}`);
       }
       g.insertBefore(p, tag);
     });

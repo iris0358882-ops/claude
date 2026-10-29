@@ -284,14 +284,30 @@ button, input, textarea, select { font: inherit; color: inherit; }
   background: var(--surface);
 }
 
-/* ---------- 紙片與膠帶 ---------- */
+/* ---------- 紙膠帶 ---------- */
 
-.piece {
+/* 對話框本身就是一段紙膠帶：半透明、有纖維、兩端撕開，字寫在膠帶上 */
+.strip {
+  position: relative;
+  transform: rotate(var(--tilt, 0deg));
+  clip-path: var(--edge);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 38%, rgba(255, 255, 255, 0.07) 100%),
+    var(--tex-grain),
+    var(--tape-color);
+  background-size: auto, 160px, auto;
+  background-blend-mode: normal, soft-light, normal;
+}
+/* 影子要跟著撕開的形狀，所以掛在外層 */
+.line:has(.strip) { filter: drop-shadow(0 1.5px 1.5px rgba(0, 0, 0, 0.45)); }
+
+/* 照片和貼圖：還是用膠帶貼在畫面上 */
+.taped {
   position: relative;
   transform: rotate(var(--tilt, 0deg));
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35), 0 8px 16px -6px rgba(0, 0, 0, 0.6);
 }
-.piece::before, .piece::after {
+.taped::before, .taped::after {
   position: absolute;
   z-index: 2;
   width: 62px;
@@ -332,16 +348,14 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .line { margin: 0; max-width: 88%; font-size: 17px; line-height: 1.95; letter-spacing: 0.04em; animation: rise 0.4s ease both; }
 .turn.me .line { text-align: right; }
 .hl {
+  --tape-color: rgba(214, 208, 192, 0.2); /* 對方：煙灰色的透明膠帶 */
   display: inline-block;
-  padding: 8px 16px;
-  background: var(--tex-grain), var(--hl-ai);
-  background-size: 160px, auto;
-  background-blend-mode: soft-light, normal;
+  padding: 8px 24px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   text-align: left;
 }
-.line { margin-top: 4px; }
+.turn.lines { gap: 6px; }
 .hl code {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.86em;
@@ -357,7 +371,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   white-space: pre;
   overflow-x: auto;
 }
-.hl.typing { letter-spacing: 0.3em; animation: breathe 1.2s ease-in-out infinite; }
+.hl.typing { background: var(--hl-ai); letter-spacing: 0.3em; animation: breathe 1.2s ease-in-out infinite; }
 @keyframes breathe { 50% { opacity: 0.35; } }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
@@ -370,20 +384,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
   color: var(--text-soft);
 }
 
-/* 重要的一句（你的訊息、對方的問句）：白色方框加印泥紅的錯位陰影 */
+/* 你的訊息：米白紙膠帶；對方的問句：黃色紙膠帶 */
 .line.box { max-width: 86%; animation: rise 0.4s ease both; }
-.line.box .hl {
-  display: inline-block;
-  padding: 10px 18px;
-  background: var(--tex-grain), var(--cream);
-  background-size: 160px, auto;
-  background-blend-mode: multiply, normal;
-  color: var(--on-accent);
-  box-shadow: 6px 6px 0 var(--accent), 7px 9px 14px -4px rgba(0, 0, 0, 0.6);
-  text-align: left;
-}
-/* 對方的問句：整塊黃色 */
-.turn.ai .line.box .hl { background: var(--tex-grain), var(--accent); background-size: 160px, auto; background-blend-mode: multiply, normal; box-shadow: 6px 6px 0 rgba(239, 233, 220, 0.82), 7px 9px 14px -4px rgba(0, 0, 0, 0.6); }
+.line.box .hl { --tape-color: rgba(241, 235, 221, 0.84); padding: 9px 26px; color: var(--on-accent); }
+.turn.ai .line.box .hl { --tape-color: rgba(242, 194, 48, 0.8); }
 .time-tag {
   margin-top: -4px;
   padding: 2px 8px;
