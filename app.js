@@ -1,8 +1,8 @@
-const APP_VERSION = "2026.10.29-e"; // 設定最下面會顯示，用來確認手機上是不是新版
+const APP_VERSION = "2026.10.29-f"; // 設定最下面會顯示，用來確認手機上是不是新版
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
 const STORE = {
   settings: "grey.settings", history: "grey.history", bg: "grey.bg",
-  todos: "grey.todos", reminders: "grey.reminders", todayOpen: "grey.todayOpen", weather: "grey.weather",
+  todos: "grey.todos", memory: "grey.memory", reminders: "grey.reminders", todayOpen: "grey.todayOpen", weather: "grey.weather",
 };
 const REPLY_DELAY = 1100; // 停止輸入多久後對方才回（可以連發好幾則）
 const DEFAULTS = {
@@ -76,6 +76,9 @@ const PERSONAS = [
 // 小管家的能力說明，跟人設分開放，改人設不會弄壞工具
 const BUTLER_PROMPT = () =>
   "你同時是對方的日常小管家，可以用工具管理待辦、設提醒、查天氣。\n" +
+  "你有一本記事本當長期記憶（只會帶最近一段聊天紀錄給你，更早的要靠記事本）。" +
+  "對方說了以後還用得到的事，像喜好、習慣、重要的人和計畫、希望你怎麼對待他，就用 remember 記一句；" +
+  "資訊變了就 update_memory，對方要你忘記就 forget_memory。一時的心情和瑣事不用記。記了不用特地說。\n" +
   "對方說要做什麼、要記什麼、要你提醒什麼，就直接用工具處理，不用先問可不可以。\n" +
   "時間沒講清楚才問；「晚上」「明早」這種就自己挑合理的時間，並在回覆裡講出來。\n" +
   "問到待辦或天氣時一定先用工具查，不要憑印象回答。\n" +
@@ -325,6 +328,17 @@ const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
 const WEEK_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const saveTodos = () => { save(STORE.todos, todos); renderToday(); };
+
+// 記事本：關於對方的長期記憶，所有角色共用；每輪都會帶進 system
+let memory = load(STORE.memory, []); // {id, text, time}
+const MEMORY_MAX_ITEMS = 60;
+const MEMORY_MAX_CHARS = 4000;
+const memoryChars = () => memory.reduce((n, m) => n + m.text.length, 0);
+const saveMemory = () => { save(STORE.memory, memory); renderMemory(); };
+function memoryPrompt() {
+  if (!memory.length) return "你的記事本目前是空的。";
+  return "你的記事本（關於對方、要長期記住的事）：\n" + memory.map((m) => `- [${m.id}] ${m.text}`).join("\n");
+}
 const saveReminders = () => { save(STORE.reminders, reminders); renderToday(); };
 
 function nowText() {
@@ -381,6 +395,21 @@ async function fetchWeather(days = 3) {
 
 /** 給 Claude 用的工具 */
 const TOOLS = [
+  {
+    name: "remember",
+    description: "把關於對方、值得長期記住的事寫進記事本（一句話）。已經有類似的條目時改用 update_memory。",
+    input_schema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
+  },
+  {
+    name: "update_memory",
+    description: "修改記事本裡的一條（例如資訊變了，或把相關的幾條合併成一條）。",
+    input_schema: { type: "object", properties: { id: { type: "string" }, text: { type: "string" } }, required: ["id", "text"] },
+  },
+  {
+    name: "forget_memory",
+    description: "刪掉記事本裡的一條（對方要你忘記，或已經不正確）。",
+    input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+  },
   {
     name: "add_todo",
     description: "新增一項待辦事項。",
@@ -482,6 +511,34 @@ async function runTool(name, input = {}) {
       reminders = reminders.filter((x) => x !== r);
       saveReminders();
       return { result: { ok: true }, action: `取消提醒 ${r.text}` };
+    }
+    case "remember": {
+      const text = String(input.text).trim();
+      if (!text) return { result: { error: "內容是空的" }, error: true };
+      if (memory.length >= MEMORY_MAX_ITEMS || memoryChars() + text.length > MEMORY_MAX_CHARS) {
+        return { result: { error: "記事本滿了。先用 update_memory 合併相關的條目，或用 forget_memory 刪掉過時的，再記這條。" }, error: true };
+      }
+      const m = { id: uid().slice(0, 5), text, time: Date.now() };
+      memory.push(m);
+      saveMemory();
+      return { result: { ok: true, id: m.id }, action: `記住 ✎ ${text}` };
+    }
+    case "update_memory": {
+      const m = memory.find((x) => x.id === input.id);
+      if (!m) return { result: { error: "找不到這個 id" }, error: true };
+      const text = String(input.text).trim();
+      if (memoryChars() - m.text.length + text.length > MEMORY_MAX_CHARS) return { result: { error: "改完會超過記事本的長度上限，請寫短一點" }, error: true };
+      m.text = text;
+      m.time = Date.now();
+      saveMemory();
+      return { result: { ok: true }, action: `更新記憶 ✎ ${text}` };
+    }
+    case "forget_memory": {
+      const m = memory.find((x) => x.id === input.id);
+      if (!m) return { result: { error: "找不到這個 id" }, error: true };
+      memory = memory.filter((x) => x !== m);
+      saveMemory();
+      return { result: { ok: true }, action: `忘掉 ${m.text}` };
     }
     case "get_weather": {
       const w = await fetchWeather(input.days ?? 3);
@@ -825,10 +882,14 @@ async function getClient() {
  * 把歷史整理成 API 要的格式：連發的訊息合併成一個 user turn；對方的回覆原封不動回傳（含思考區塊）。
  * 歷史只會往後加、不會改，思考區塊才能一直沿用。
  */
+// 只送最近一段聊天紀錄：保留 80–120 則，一次往前推 40 則（推得少，快取才不會每則都失效）
+const WINDOW_KEEP = 80;
+const WINDOW_STEP = 40;
 function buildMessages() {
   const out = [];
   let notes = []; // 期間跳過的提醒，併進下一則訊息讓對方知道
-  for (const m of history) {
+  const start = Math.floor(Math.max(0, history.length - WINDOW_KEEP) / WINDOW_STEP) * WINDOW_STEP;
+  for (const m of history.slice(start)) {
     if (m.role === "note") { notes.push(`${fmtTime(m.at ?? m.time)}「${m.text}」`); continue; }
     if (m.role === "user") {
       const text = notes.length ? `（系統：期間跳出過提醒 ${notes.join("、")}）\n${m.text}` : m.text;
@@ -879,6 +940,7 @@ async function askClaude(view) {
       system: [
         { type: "text", text: settings.system },
         { type: "text", text: BUTLER_PROMPT() },
+        { type: "text", text: memoryPrompt() },
       ],
       thinking: { type: "adaptive", display: "summarized" },
       output_config: { effort: settings.effort },
@@ -1040,6 +1102,36 @@ $("#open-settings").onclick = () => {
 };
 
 $("#s-version").textContent = `版本 ${APP_VERSION}`;
+
+// 記事本（設定裡可以看、刪、自己加）
+function renderMemory() {
+  const list = $("#s-memory");
+  list.replaceChildren(
+    ...memory.map((m) => {
+      const li = document.createElement("li");
+      li.innerHTML = `<span></span><button type="button" class="x" aria-label="刪除">×</button>`;
+      li.firstChild.textContent = m.text;
+      li.lastChild.onclick = () => { memory = memory.filter((x) => x !== m); saveMemory(); };
+      return li;
+    }),
+  );
+  if (!memory.length) list.innerHTML = `<li class="empty">還沒有記下任何事。</li>`;
+  $("#s-memory-count").textContent = `${memory.length} / ${MEMORY_MAX_ITEMS} 條・${memoryChars()} / ${MEMORY_MAX_CHARS} 字`;
+}
+function addMemoryByHand() {
+  const el = $("#s-memory-add");
+  const text = el.value.trim();
+  if (!text) return;
+  if (memory.length >= MEMORY_MAX_ITEMS || memoryChars() + text.length > MEMORY_MAX_CHARS) return alert("記事本滿了，先刪掉幾條。");
+  memory.push({ id: uid().slice(0, 5), text, time: Date.now() });
+  el.value = "";
+  saveMemory();
+}
+$("#s-memory-add").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); addMemoryByHand(); }
+});
+$("#s-memory-add-btn").onclick = addMemoryByHand;
+renderMemory();
 $("#s-font").replaceChildren(...Object.entries(FONTS).map(([k, f]) => new Option(f.label, k)));
 
 // 模型（每個角色各自記）

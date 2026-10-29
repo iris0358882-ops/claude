@@ -647,6 +647,19 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .settings .file-btn { border: 0; }
 .link { border: 0; background: none; padding: 5px 2px; font-size: 13px; color: var(--ink-soft); cursor: pointer; }
+.settings .memory { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.settings .memory li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.settings .memory li span { flex: 1; overflow-wrap: anywhere; }
+.settings .memory li.empty { color: var(--ink-soft); border: 0; }
+.settings .memory .x { border: 0; background: none; padding: 0 4px; font-size: 18px; line-height: 1.4; color: var(--ink-soft); cursor: pointer; }
 .settings .version { text-align: center; }
 .actions { display: flex; justify-content: space-between; gap: 10px; }
 .actions button { border: 0; padding: 9px 20px; font-size: 14px; letter-spacing: 0.1em; cursor: pointer; }
