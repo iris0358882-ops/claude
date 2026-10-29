@@ -110,7 +110,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 60px 2px 20px; /* 上面留位置給設定按鈕 */
+  padding: 22px 2px 20px;
   display: flex;
   flex-direction: column;
   gap: 26px;
@@ -239,6 +239,184 @@ button, input, textarea, select { font: inherit; color: inherit; }
   text-align: center;
 }
 .notice.error { color: var(--crimson-ink); border-color: var(--crimson); }
+
+/* ---------- 今日卡片 ---------- */
+
+.today {
+  flex: none;
+  position: relative;
+  z-index: 2;
+  margin-right: 50px; /* 右邊讓給設定按鈕 */
+  background: var(--card);
+  border: 1.5px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--crimson);
+}
+.today-bar {
+  width: 100%;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.today-date { display: flex; align-items: baseline; gap: 8px; }
+.today-date b { font-family: var(--display); font-weight: 700; font-size: 20px; color: var(--crimson); letter-spacing: 0.02em; }
+.today-date .caps { font-size: 11px; font-weight: 600; letter-spacing: 0.3em; color: var(--ink-soft); }
+.today-weather { flex: 1; font-size: 14px; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.today-weather b { font-family: var(--display); font-size: 16px; }
+.today-weather .rain { margin-left: 8px; color: var(--ink-soft); font-size: 13px; }
+.today-count {
+  font-family: var(--caps);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: var(--crimson-ink);
+  white-space: nowrap;
+}
+.today-count::after { content: " ▾"; display: inline-block; transition: transform 0.2s ease; }
+.today.open .today-count::after { transform: rotate(180deg); }
+
+.today-body {
+  display: none;
+  gap: 4px 18px;
+  padding: 4px 14px 12px;
+  border-top: 1px dashed var(--rule);
+  max-height: 38dvh;
+  overflow-y: auto;
+}
+.today.open .today-body { display: grid; grid-template-columns: 1fr; }
+@media (min-width: 560px) {
+  .today.open .today-body:has(#t-rem-col:not([hidden])) { grid-template-columns: 3fr 2fr; }
+}
+.today .legend {
+  margin: 10px 0 4px;
+  font-family: var(--caps);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--crimson-ink);
+}
+.todos, .reminders { list-style: none; margin: 0; padding: 0; }
+.todos li, .reminders li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 15px;
+  letter-spacing: 0.03em;
+}
+.todos li.empty { color: var(--ink-soft); font-size: 14px; border: 0; }
+.todos .box {
+  flex: none;
+  width: 18px; height: 18px;
+  padding: 0;
+  border: 1.5px solid var(--ink);
+  background: #fff;
+  cursor: pointer;
+  position: relative;
+}
+.todos .done .box { background: var(--crimson); border-color: var(--crimson); }
+.todos .done .box::after {
+  content: "";
+  position: absolute;
+  left: 5px; top: 1px;
+  width: 4px; height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.todos .txt { flex: 1; overflow-wrap: anywhere; }
+.todos .done .txt { color: var(--ink-soft); text-decoration: line-through; text-decoration-color: var(--crimson); }
+.todos em { margin-left: 8px; font-style: normal; font-size: 12px; color: var(--ink-soft); }
+.todos em.late { color: var(--crimson); }
+.todos .x, .reminders .x {
+  flex: none;
+  border: 0;
+  background: none;
+  padding: 0 4px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink-soft);
+  opacity: 0.5;
+  cursor: pointer;
+}
+.todos .x:hover, .reminders .x:hover { opacity: 1; }
+.reminders time { flex: none; font-family: var(--display); font-size: 14px; color: var(--crimson); }
+.reminders span { flex: 1; overflow-wrap: anywhere; }
+.todo-add input {
+  width: 100%;
+  margin-top: 6px;
+  border: 0;
+  border-bottom: 1px dashed var(--rule);
+  padding: 6px 0;
+  background: transparent;
+  font-size: 15px;
+  outline: 0;
+}
+.todo-add input::placeholder { color: rgba(58, 42, 46, 0.45); }
+
+/* 這一輪用了哪些工具：像貼在紙上的小標籤 */
+.acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.act {
+  padding: 3px 10px;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--crimson-ink);
+  background: var(--card);
+  border: 1px dashed var(--crimson);
+  transform: rotate(-1deg);
+  animation: rise 0.4s ease both;
+}
+.act:nth-child(even) { transform: rotate(0.8deg); }
+
+/* 提醒時間到：夾在對話裡的便條 */
+.memo {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 200px;
+  max-width: 86%;
+  padding: 10px 22px 12px;
+  background: #fff6d6;
+  border-top: 10px solid rgba(180, 54, 90, 0.35); /* 紙膠帶 */
+  box-shadow: 0 8px 18px rgba(120, 40, 60, 0.16);
+  transform: rotate(-1.2deg);
+  animation: rise 0.4s ease both;
+}
+.memo-head { font-family: var(--caps); font-weight: 600; font-size: 11px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--crimson-ink); }
+.memo-text { font-size: 16px; letter-spacing: 0.04em; text-align: center; }
+
+/* ---------- 快捷按鈕 ---------- */
+
+.quick {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  padding: 0 2px 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.quick::-webkit-scrollbar { display: none; }
+.quick button {
+  flex: none;
+  padding: 6px 12px;
+  border: 1px solid var(--ink);
+  background: rgba(251, 247, 244, 0.86);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  box-shadow: 2px 2px 0 var(--crimson);
+}
+.quick button:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--crimson); }
 
 /* ---------- 輸入列 ---------- */
 
@@ -385,6 +563,16 @@ button, input, textarea, select { font: inherit; color: inherit; }
   background: var(--ink);
   cursor: pointer;
 }
+.settings .place-search { display: flex; gap: 8px; }
+.settings .place-search input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--rule);
+  padding: 6px 10px;
+  font-size: 15px;
+  background: rgba(255, 255, 255, 0.85);
+}
+.settings .file-btn { border: 0; }
 .link { border: 0; background: none; padding: 5px 2px; font-size: 13px; color: var(--ink-soft); cursor: pointer; }
 .actions { display: flex; justify-content: space-between; gap: 10px; }
 .actions button { border: 0; padding: 9px 20px; font-size: 14px; letter-spacing: 0.1em; cursor: pointer; }
@@ -396,5 +584,5 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .line, .sealed, .sealed.done .stamp { animation: none; }
+  .line, .sealed, .sealed.done .stamp, .act, .memo { animation: none; }
 }

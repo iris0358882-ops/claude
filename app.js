@@ -1,5 +1,8 @@
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
-const STORE = { settings: "grey.settings", history: "grey.history", bg: "grey.bg" };
+const STORE = {
+  settings: "grey.settings", history: "grey.history", bg: "grey.bg",
+  todos: "grey.todos", reminders: "grey.reminders", todayOpen: "grey.todayOpen", weather: "grey.weather",
+};
 const REPLY_DELAY = 1100; // 停止輸入多久後對方才回（可以連發好幾則）
 const DEFAULTS = {
   aiName: "Grey",
@@ -13,7 +16,17 @@ const DEFAULTS = {
   model: "claude-opus-5-5",
   effort: "low",
   blur: 0,
+  place: { name: "台北", lat: 25.033, lon: 121.565 },
 };
+
+// 小管家的能力說明，跟人設分開放，改人設不會弄壞工具
+const BUTLER_PROMPT = (now) =>
+  "你同時是對方的日常小管家，可以用工具管理待辦、設提醒、查天氣。\n" +
+  "對方說要做什麼、要記什麼、要你提醒什麼，就直接用工具處理，不用先問可不可以。\n" +
+  "時間沒講清楚才問；「晚上」「明早」這種就自己挑合理的時間，並在回覆裡講出來。\n" +
+  "問到待辦或天氣時一定先用工具查，不要憑印象回答。\n" +
+  "用工具之後照你原本的語氣簡短回覆，不要把工具結果整段念出來。\n" +
+  `現在時間：${now}。`;
 
 // ---------- 儲存 ----------
 
@@ -139,7 +152,299 @@ function scrollDown(force = false) {
   if (force || nearBottom()) requestAnimationFrame(() => (chat.scrollTop = chat.scrollHeight));
 }
 
+// ---------- 小管家：待辦、提醒、天氣 ----------
+
+let todos = load(STORE.todos, []);         // {id, text, due?, done, created}
+let reminders = load(STORE.reminders, []); // {id, text, at(ms), fired}
+const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
+const WEEK_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+const saveTodos = () => { save(STORE.todos, todos); renderToday(); };
+const saveReminders = () => { save(STORE.reminders, reminders); renderToday(); };
+
+function nowText() {
+  const d = new Date();
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "-";
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return `${dayKey(d)}（週${WEEK[d.getDay()]}）${pad(d.getHours())}:${pad(d.getMinutes())}，` +
+    `時區 ${tz}（UTC${sign}${pad(Math.floor(Math.abs(off) / 60))}:${pad(Math.abs(off) % 60)}）`;
+}
+
+const fmtWhen = (t) => {
+  const d = new Date(t);
+  const today = dayKey(Date.now());
+  const tomorrow = dayKey(Date.now() + 864e5);
+  const day = dayKey(d) === today ? "" : dayKey(d) === tomorrow ? "明天 " : `${d.getMonth() + 1}/${d.getDate()} `;
+  return `${day}${fmtTime(t)}`;
+};
+
+// Open-Meteo：免費、不用 key
+const WMO = {
+  0: "晴", 1: "大致晴", 2: "多雲", 3: "陰", 45: "有霧", 48: "有霧",
+  51: "毛毛雨", 53: "毛毛雨", 55: "毛毛雨", 56: "凍雨", 57: "凍雨",
+  61: "小雨", 63: "下雨", 65: "大雨", 66: "凍雨", 67: "凍雨",
+  71: "小雪", 73: "下雪", 75: "大雪", 77: "雪粒",
+  80: "陣雨", 81: "陣雨", 82: "強陣雨", 85: "陣雪", 86: "陣雪",
+  95: "雷雨", 96: "雷雨冰雹", 99: "雷雨冰雹",
+};
+
+async function fetchWeather(days = 3) {
+  const p = settings.place;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${p.lat}&longitude=${p.lon}` +
+    `&current=temperature_2m,weather_code,apparent_temperature` +
+    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
+    `&timezone=auto&forecast_days=${Math.min(7, Math.max(1, days))}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`天氣服務回應 ${r.status}`);
+  const j = await r.json();
+  const w = {
+    place: p.name,
+    now: { temp: Math.round(j.current.temperature_2m), feels: Math.round(j.current.apparent_temperature), sky: WMO[j.current.weather_code] ?? "—" },
+    days: j.daily.time.map((date, i) => ({
+      date,
+      sky: WMO[j.daily.weather_code[i]] ?? "—",
+      high: Math.round(j.daily.temperature_2m_max[i]),
+      low: Math.round(j.daily.temperature_2m_min[i]),
+      rain: j.daily.precipitation_probability_max[i],
+    })),
+    fetched: Date.now(),
+  };
+  save(STORE.weather, w);
+  return w;
+}
+
+/** 給 Claude 用的工具 */
+const TOOLS = [
+  {
+    name: "add_todo",
+    description: "新增一項待辦事項。",
+    input_schema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "要做的事，簡短" },
+        due: { type: "string", description: "截止日期 YYYY-MM-DD，沒有就省略" },
+      },
+      required: ["text"],
+    },
+  },
+  {
+    name: "list_todos",
+    description: "列出待辦事項（含 id）。要完成或刪除之前先用這個找 id。",
+    input_schema: { type: "object", properties: { include_done: { type: "boolean" } } },
+  },
+  {
+    name: "complete_todo",
+    description: "把一項待辦標成完成。",
+    input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+  },
+  {
+    name: "delete_todo",
+    description: "刪除一項待辦。",
+    input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+  },
+  {
+    name: "set_reminder",
+    description: "設一個提醒，時間到了會跳通知並在對話裡出現。",
+    input_schema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "要提醒的事" },
+        at: { type: "string", description: "提醒時間，ISO 8601 含時區，例如 2026-10-29T21:00:00+08:00" },
+      },
+      required: ["text", "at"],
+    },
+  },
+  {
+    name: "list_reminders",
+    description: "列出還沒到的提醒（含 id）。",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "cancel_reminder",
+    description: "取消一個提醒。",
+    input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+  },
+  {
+    name: "get_weather",
+    description: "查對方所在地的天氣：現在的溫度，以及今天起幾天的預報（降雨機率是 %）。",
+    input_schema: { type: "object", properties: { days: { type: "integer", description: "1 到 7，預設 3" } } },
+  },
+];
+
+/** 執行工具；action 是顯示在對話裡的小標籤 */
+async function runTool(name, input = {}) {
+  const findTodo = (id) => todos.find((t) => t.id === id);
+  switch (name) {
+    case "add_todo": {
+      const t = { id: uid(), text: String(input.text).trim(), done: false, created: Date.now() };
+      if (input.due) t.due = input.due;
+      todos.push(t);
+      saveTodos();
+      return { result: { ok: true, id: t.id }, action: `待辦 ＋ ${t.text}` };
+    }
+    case "list_todos":
+      return { result: todos.filter((t) => input.include_done || !t.done).map(({ id, text, due, done }) => ({ id, text, due, done })) };
+    case "complete_todo": {
+      const t = findTodo(input.id);
+      if (!t) return { result: { error: "找不到這個 id" }, error: true };
+      t.done = true;
+      t.doneAt = Date.now();
+      saveTodos();
+      return { result: { ok: true }, action: `完成 ✓ ${t.text}` };
+    }
+    case "delete_todo": {
+      const t = findTodo(input.id);
+      if (!t) return { result: { error: "找不到這個 id" }, error: true };
+      todos = todos.filter((x) => x !== t);
+      saveTodos();
+      return { result: { ok: true }, action: `刪掉 ${t.text}` };
+    }
+    case "set_reminder": {
+      const at = Date.parse(input.at);
+      if (Number.isNaN(at)) return { result: { error: "時間格式看不懂，請用 ISO 8601" }, error: true };
+      if (at < Date.now() - 60e3) return { result: { error: "這個時間已經過了" }, error: true };
+      const r = { id: uid(), text: String(input.text).trim(), at, fired: false };
+      reminders.push(r);
+      saveReminders();
+      return { result: { ok: true, id: r.id, at: new Date(at).toString() }, action: `提醒 ⏰ ${fmtWhen(at)} ${r.text}` };
+    }
+    case "list_reminders":
+      return { result: reminders.filter((r) => !r.fired).map(({ id, text, at }) => ({ id, text, at: new Date(at).toString() })) };
+    case "cancel_reminder": {
+      const r = reminders.find((x) => x.id === input.id);
+      if (!r) return { result: { error: "找不到這個 id" }, error: true };
+      reminders = reminders.filter((x) => x !== r);
+      saveReminders();
+      return { result: { ok: true }, action: `取消提醒 ${r.text}` };
+    }
+    case "get_weather": {
+      const w = await fetchWeather(input.days ?? 3);
+      renderWeather(w);
+      return { result: w };
+    }
+    default:
+      return { result: { error: `沒有 ${name} 這個工具` }, error: true };
+  }
+}
+
+// ---------- 今日卡片 ----------
+
+const today = $("#today");
+const todayToggle = $("#today-toggle");
+
+function setTodayOpen(open) {
+  today.classList.toggle("open", open);
+  todayToggle.setAttribute("aria-expanded", String(open));
+  save(STORE.todayOpen, open);
+}
+todayToggle.onclick = () => setTodayOpen(!today.classList.contains("open"));
+
+function renderWeather(w) {
+  const el = $("#t-weather");
+  if (!w || w.place !== settings.place.name) { el.textContent = settings.place.name; return; }
+  const d = w.days.find((x) => x.date === dayKey(Date.now())) ?? w.days[0];
+  el.innerHTML = `<b>${w.now.temp}°</b> ${escapeHtml(w.now.sky)}` +
+    (d ? `<span class="rain">☂ ${d.rain ?? 0}%</span>` : "");
+  el.title = `${w.place}・今天 ${d?.low}–${d?.high}°`;
+}
+
+function renderToday() {
+  const d = new Date();
+  $("#t-date").textContent = `${pad(d.getMonth() + 1)}.${pad(d.getDate())}`;
+  $("#t-week").textContent = WEEK_EN[d.getDay()].slice(0, 3);
+
+  // 待辦：沒做完的在前；做完的只留今天勾掉的
+  const list = $("#t-todos");
+  const shown = todos
+    .filter((t) => !t.done || dayKey(t.doneAt ?? 0) === dayKey(Date.now()))
+    .sort((a, b) => a.done - b.done || (a.due ?? "9") .localeCompare(b.due ?? "9"));
+  list.replaceChildren(
+    ...shown.map((t) => {
+      const li = document.createElement("li");
+      li.className = t.done ? "done" : "";
+      const overdue = !t.done && t.due && t.due < dayKey(Date.now());
+      li.innerHTML = `<button type="button" class="box" aria-label="${t.done ? "取消完成" : "完成"}"></button>
+        <span class="txt">${escapeHtml(t.text)}${t.due ? `<em class="${overdue ? "late" : ""}">${t.due.slice(5).replace("-", "/")}</em>` : ""}</span>
+        <button type="button" class="x" aria-label="刪除">×</button>`;
+      li.querySelector(".box").onclick = () => {
+        t.done = !t.done;
+        t.doneAt = t.done ? Date.now() : undefined;
+        saveTodos();
+      };
+      li.querySelector(".x").onclick = () => { todos = todos.filter((x) => x !== t); saveTodos(); };
+      return li;
+    }),
+  );
+  if (!shown.length) list.innerHTML = `<li class="empty">今天很空。</li>`;
+
+  const upcoming = reminders.filter((r) => !r.fired).sort((a, b) => a.at - b.at);
+  $("#t-reminders").replaceChildren(
+    ...upcoming.slice(0, 4).map((r) => {
+      const li = document.createElement("li");
+      li.innerHTML = `<time>${fmtWhen(r.at)}</time><span>${escapeHtml(r.text)}</span><button type="button" class="x" aria-label="取消">×</button>`;
+      li.querySelector(".x").onclick = () => { reminders = reminders.filter((x) => x !== r); saveReminders(); };
+      return li;
+    }),
+  );
+  $("#t-rem-col").hidden = !upcoming.length;
+
+  const left = todos.filter((t) => !t.done).length;
+  $("#t-count").textContent = left ? `${left} 件待辦` : "無待辦";
+}
+
+$("#t-add").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const el = $("#t-add-input");
+  const text = el.value.trim();
+  if (!text) return;
+  todos.push({ id: uid(), text, done: false, created: Date.now() });
+  el.value = "";
+  saveTodos();
+});
+
+async function refreshWeather(force = false) {
+  const cached = load(STORE.weather, null);
+  const fresh = cached && cached.place === settings.place.name && Date.now() - cached.fetched < 30 * 60e3;
+  renderWeather(cached);
+  if (fresh && !force) return;
+  try { renderWeather(await fetchWeather(3)); } catch { /* 沒網路就先顯示舊的 */ }
+}
+
+// ---------- 提醒 ----------
+
+function checkReminders() {
+  let changed = false;
+  for (const r of reminders) {
+    if (r.fired || r.at > Date.now()) continue;
+    r.fired = true;
+    changed = true;
+    const msg = { id: uid(), role: "note", time: Date.now(), text: r.text, at: r.at };
+    history.push(msg);
+    renderNote(msg);
+    scrollDown(true);
+    try {
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(`${settings.aiName} 提醒你`, { body: r.text, tag: r.id });
+      }
+    } catch { /* 有些手機瀏覽器只能透過 service worker 跳通知 */ }
+  }
+  if (changed) {
+    reminders = reminders.filter((r) => !r.fired || Date.now() - r.at < 864e5);
+    persist();
+    saveReminders();
+  }
+}
+
 // ---------- 渲染 ----------
+
+/** 提醒時間到：像一張夾在對話裡的便條 */
+function renderNote(msg) {
+  const el = document.createElement("div");
+  el.className = "memo";
+  el.innerHTML = `<span class="memo-head">Reminder · ${fmtTime(msg.at ?? msg.time)}</span><span class="memo-text">${escapeHtml(msg.text)}</span>`;
+  chat.append(el);
+}
 
 /** 使用者連發的訊息放在同一組，署名放在最後 */
 function renderUser(msg) {
@@ -182,12 +487,15 @@ function renderAssistant(msg = {}) {
     if (!text.hidden) text.scrollTop = text.scrollHeight;
   };
 
+  const acts = document.createElement("div");
+  acts.className = "acts";
+  acts.hidden = true;
   const lines = document.createElement("div");
   lines.className = "turn lines";
   const sig = document.createElement("div");
   sig.className = "sig";
 
-  g.append(sealed, lines, sig);
+  g.append(sealed, acts, lines, sig);
   chat.append(g);
 
   let rendered = [];
@@ -215,6 +523,14 @@ function renderAssistant(msg = {}) {
       if (!text.hidden) text.scrollTop = text.scrollHeight;
       scrollDown();
     },
+    addAction(a) {
+      const tag = document.createElement("span");
+      tag.className = "act";
+      tag.textContent = a;
+      acts.append(tag);
+      acts.hidden = false;
+      scrollDown();
+    },
     setText(t) {
       toLines(t).forEach((b, i) => {
         const el = lineEl(b);
@@ -234,12 +550,13 @@ function renderAssistant(msg = {}) {
         title.textContent = "這一輪想了一些事";
       }
       sig.textContent = `${settings.aiName} · ${fmtTime(t)}`;
-      if (!rendered.length && sealed.hidden) g.remove();
+      if (!rendered.length && sealed.hidden && acts.hidden) g.remove();
     },
   };
 
   if (msg.text != null) {
     view.setThinking(msg.thinking);
+    for (const a of msg.actions ?? []) view.addAction(a);
     view.setText(msg.text);
     view.finish(msg.time);
   }
@@ -256,7 +573,7 @@ function notice(text, kind = "") {
 
 function renderAll() {
   chat.replaceChildren();
-  for (const m of history) m.role === "user" ? renderUser(m) : renderAssistant(m);
+  for (const m of history) m.role === "user" ? renderUser(m) : m.role === "note" ? renderNote(m) : renderAssistant(m);
   scrollDown(true);
 }
 
@@ -339,14 +656,19 @@ async function getClient() {
  */
 function buildMessages() {
   const out = [];
+  let notes = []; // 期間跳過的提醒，併進下一則訊息讓對方知道
   for (const m of history) {
+    if (m.role === "note") { notes.push(`${fmtTime(m.at ?? m.time)}「${m.text}」`); continue; }
     if (m.role === "user") {
+      const text = notes.length ? `（系統：期間跳出過提醒 ${notes.join("、")}）\n${m.text}` : m.text;
+      notes = [];
       const prev = out.at(-1);
-      if (prev?.role === "user") prev.content += "\n" + m.text;
-      else out.push({ role: "user", content: m.text });
+      if (prev?.role === "user" && typeof prev.content === "string") prev.content += "\n" + text;
+      else out.push({ role: "user", content: text });
     } else if (out.length) {
       if (m.ctx) out.push({ role: "system", content: m.ctx });
-      out.push({ role: "assistant", content: m.content ?? m.text });
+      if (m.turns) out.push(...m.turns); // 用過工具的一輪：整串原樣送回
+      else out.push({ role: "assistant", content: m.content ?? m.text });
     }
   }
   return out;
@@ -354,36 +676,69 @@ function buildMessages() {
 
 async function askClaude(view) {
   const client = await getClient();
-  const stream = client.beta.messages.stream({
-    model: settings.model || DEFAULTS.model,
-    max_tokens: 16000,
-    system: settings.system,
-    thinking: { type: "adaptive", display: "summarized" },
-    output_config: { effort: settings.effort },
-    messages: buildMessages(),
-    // 被安全分類器擋下時，伺服器自動換一個模型重試
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-  });
-
+  const base = buildMessages();
+  const turns = []; // 這一輪新增的訊息（含工具呼叫和結果）
+  const actions = [];
   let thinking = "";
   let text = "";
-  stream.on("thinking", (delta) => {
-    thinking += delta;
-    view.setThinking(thinking, true);
-  });
-  stream.on("text", (delta) => {
-    text += delta;
-    view.setText(text);
-  });
 
-  const final = await stream.finalMessage();
-  if (final.stop_reason === "refusal") {
-    notice("對方沒有回這則。");
-    return null;
+  for (let step = 0; step < 8; step++) {
+    const stream = client.beta.messages.stream({
+      model: settings.model || DEFAULTS.model,
+      max_tokens: 16000,
+      system: [
+        { type: "text", text: settings.system },
+        { type: "text", text: BUTLER_PROMPT(nowText()) },
+      ],
+      thinking: { type: "adaptive", display: "summarized" },
+      output_config: { effort: settings.effort },
+      tools: TOOLS,
+      messages: [...base, ...turns],
+      // 被安全分類器擋下時，伺服器自動換一個模型重試
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+    });
+
+    stream.on("thinking", (delta) => {
+      thinking += delta;
+      view.setThinking(thinking, true);
+    });
+    stream.on("text", (delta) => {
+      text += delta;
+      view.setText(text);
+    });
+
+    const final = await stream.finalMessage();
+    if (final.stop_reason === "refusal") {
+      notice("對方沒有回這則。");
+      return null;
+    }
+    turns.push({ role: "assistant", content: final.content });
+    if (final.stop_reason !== "tool_use") break;
+
+    // 執行工具，把結果交回去讓它繼續講
+    const results = [];
+    for (const b of final.content) {
+      if (b.type !== "tool_use") continue;
+      let r;
+      try { r = await runTool(b.name, b.input); }
+      catch (err) { r = { result: { error: String(err?.message || err) }, error: true }; }
+      if (r.action) { actions.push(r.action); view.addAction(r.action); }
+      results.push({ type: "tool_result", tool_use_id: b.id, content: JSON.stringify(r.result), ...(r.error && { is_error: true }) });
+    }
+    turns.push({ role: "user", content: results });
+    if (text && !text.endsWith("\n")) text += "\n";
+    if (thinking && !thinking.endsWith("\n")) thinking += "\n";
   }
-  if (!text.trim()) return null;
-  return { text, thinking, content: final.content };
+
+  // 工具跑太多輪被截斷時，補一句收尾，讓歷史保持 user / assistant 交替
+  if (turns.at(-1)?.role === "user") {
+    turns.push({ role: "assistant", content: [{ type: "text", text: "（先做到這裡）" }] });
+    text += "（先做到這裡）";
+    view.setText(text);
+  }
+  if (!text.trim() && !actions.length) return null;
+  return { text: text.trim(), thinking, turns, actions };
 }
 
 // ---------- 示範模式（沒有 API Key 時） ----------
@@ -412,7 +767,25 @@ const DEMO = [
 ];
 let demoIndex = 0;
 
+/** 示範模式也能記待辦，方便先看今日卡片的效果 */
+async function demoButler(view) {
+  const last = history.at(-1)?.text ?? "";
+  const m = last.match(/^(?:幫我)?(?:記一下|記下|記|待辦)[：:\s]*(.+)$/);
+  if (!m) return null;
+  view.setThinking("要記一件事。\n直接加進待辦。", true);
+  await sleep(600);
+  const r = await runTool("add_todo", { text: m[1] });
+  view.addAction(r.action);
+  view.typing(true);
+  await sleep(700);
+  const text = "記好了。\n在上面的卡片裡，做完自己勾掉。";
+  view.setText(text);
+  return { text, thinking: "要記一件事。\n直接加進待辦。", actions: [r.action] };
+}
+
 async function askDemo(view) {
+  const butler = await demoButler(view);
+  if (butler) return butler;
   const pick = DEMO[demoIndex++ % DEMO.length];
   let t = "";
   for (const ch of pick.thinking) {
@@ -465,7 +838,60 @@ const fields = {
 
 $("#open-settings").onclick = () => {
   for (const [k, el] of Object.entries(fields)) el.type === "checkbox" ? (el.checked = settings[k]) : (el.value = settings[k]);
+  showPlace();
+  showNotify();
   dlg.showModal();
+};
+
+// 天氣地點
+function showPlace(msg) {
+  $("#s-place-name").textContent = msg ?? settings.place.name;
+}
+function setPlace(place) {
+  settings.place = place;
+  save(STORE.settings, settings);
+  showPlace();
+  refreshWeather(true);
+}
+async function searchPlace() {
+  const q = $("#s-place").value.trim();
+  if (!q) return;
+  showPlace("搜尋中…");
+  try {
+    const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&language=zh&name=${encodeURIComponent(q)}`);
+    const hit = (await r.json()).results?.[0];
+    if (!hit) return showPlace(`找不到「${q}」`);
+    $("#s-place").value = "";
+    setPlace({ name: hit.name, lat: hit.latitude, lon: hit.longitude });
+  } catch {
+    showPlace("連不上地點服務");
+  }
+}
+$("#s-place-set").onclick = searchPlace;
+$("#s-place").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); searchPlace(); }
+});
+$("#s-place-here").onclick = () => {
+  if (!navigator.geolocation) return showPlace("這個瀏覽器不能定位");
+  showPlace("定位中…");
+  navigator.geolocation.getCurrentPosition(
+    (pos) => setPlace({ name: "目前位置", lat: +pos.coords.latitude.toFixed(3), lon: +pos.coords.longitude.toFixed(3) }),
+    () => showPlace("沒有拿到位置權限"),
+    { timeout: 10000 },
+  );
+};
+
+// 通知權限
+function showNotify() {
+  const ok = "Notification" in window;
+  const state = ok ? Notification.permission : "unsupported";
+  $("#s-notify-state").textContent =
+    { granted: "已開啟", denied: "被瀏覽器擋了，要去瀏覽器設定打開", default: "", unsupported: "這個瀏覽器不支援（iPhone 要先加到主畫面）" }[state];
+  $("#s-notify").hidden = state !== "default";
+}
+$("#s-notify").onclick = async () => {
+  try { await Notification.requestPermission(); } catch {}
+  showNotify();
 };
 
 function readFields() {
@@ -518,9 +944,30 @@ $("#s-clear").onclick = () => {
   dlg.close();
 };
 
+// ---------- 快捷按鈕 ----------
+
+$("#quick").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.say) return send(b.dataset.say);
+  input.value = b.dataset.fill;
+  autosize();
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+});
+
 // ---------- 開始 ----------
 
 applyLook();
+setTodayOpen(load(STORE.todayOpen, true));
+renderToday();
+refreshWeather();
+checkReminders();
+setInterval(checkReminders, 15e3);
+setInterval(() => { renderToday(); refreshWeather(); }, 10 * 60e3); // 跨日、天氣更新
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") { checkReminders(); renderToday(); refreshWeather(); }
+});
 if (!history.length) {
   history.push({ id: uid(), role: "assistant", time: Date.now(), text: "嗯，你來了。\n今天想記下什麼？" });
   persist();

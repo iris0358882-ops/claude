@@ -27,7 +27,37 @@
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg>
     </button>
 
+    <!-- 今日卡片：日期、天氣、待辦、提醒 -->
+    <section id="today" class="today">
+      <button type="button" class="today-bar" id="today-toggle" aria-expanded="true">
+        <span class="today-date"><b id="t-date"></b><span class="caps" id="t-week"></span></span>
+        <span class="today-weather" id="t-weather">—</span>
+        <span class="today-count" id="t-count"></span>
+      </button>
+      <div class="today-body" id="today-body">
+        <div class="today-col">
+          <h3 class="legend">To do</h3>
+          <ul id="t-todos" class="todos"></ul>
+          <form id="t-add" class="todo-add" autocomplete="off">
+            <input id="t-add-input" type="text" placeholder="＋ 加一件事" maxlength="80" enterkeyhint="done" />
+          </form>
+        </div>
+        <div class="today-col" id="t-rem-col">
+          <h3 class="legend">Reminders</h3>
+          <ul id="t-reminders" class="reminders"></ul>
+        </div>
+      </div>
+    </section>
+
     <main id="chat" class="chat" aria-live="polite"></main>
+
+    <div class="quick" id="quick" aria-label="快捷">
+      <button type="button" data-say="今天有什麼要做的？">今天要做什麼</button>
+      <button type="button" data-say="今天跟明天天氣怎樣？要帶傘嗎？">天氣</button>
+      <button type="button" data-fill="幫我記一下：">記一件事</button>
+      <button type="button" data-fill="提醒我 ">設提醒</button>
+      <button type="button" data-say="晚餐吃什麼好？給我三個選項。">晚餐吃什麼</button>
+    </div>
 
     <form id="composer" class="composer" autocomplete="off">
       <textarea id="input" rows="1" placeholder="給 Grey 發消息…" enterkeyhint="send"></textarea>
@@ -72,6 +102,23 @@
           </select>
         </label>
         <p class="hint">Key 只存在這個瀏覽器的 localStorage，直接從瀏覽器呼叫 API，請只在自己的裝置上使用。</p>
+      </fieldset>
+
+      <fieldset>
+        <h3 class="legend">小管家</h3>
+        <div class="row">
+          <span>天氣地點：<b id="s-place-name"></b></span>
+          <button type="button" class="link" id="s-place-here">用目前位置</button>
+        </div>
+        <div class="place-search">
+          <input id="s-place" type="text" placeholder="輸入城市，例如 台中" enterkeyhint="search" />
+          <button type="button" class="file-btn" id="s-place-set">設定</button>
+        </div>
+        <div class="row">
+          <span>提醒通知 <span class="hint" id="s-notify-state"></span></span>
+          <button type="button" class="file-btn" id="s-notify">開啟通知</button>
+        </div>
+        <p class="hint">提醒要這個頁面開著（或留在背景）才會跳出來。</p>
       </fieldset>
 
       <fieldset>
