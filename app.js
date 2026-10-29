@@ -427,17 +427,23 @@ function checkReminders() {
     history.push(msg);
     renderNote(msg);
     scrollDown(true);
-    try {
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification(`${settings.aiName} 提醒你`, { body: r.text, tag: r.id });
-      }
-    } catch { /* 有些手機瀏覽器只能透過 service worker 跳通知 */ }
+    notify(`${settings.aiName} 提醒你`, r.text, r.id);
   }
   if (changed) {
     reminders = reminders.filter((r) => !r.fired || Date.now() - r.at < 864e5);
     persist();
     saveReminders();
   }
+}
+
+/** 跳系統通知：手機（特別是 iPhone 主畫面 App）要透過 service worker 才跳得出來 */
+async function notify(title, body, tag) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg) return await reg.showNotification(title, { body, tag, icon: "icons/icon-192.png", badge: "icons/icon-192.png" });
+  } catch { /* 退回一般通知 */ }
+  try { new Notification(title, { body, tag, icon: "icons/icon-192.png" }); } catch {}
 }
 
 // ---------- 渲染 ----------
@@ -890,12 +896,13 @@ function showNotify() {
   const ok = "Notification" in window;
   const state = ok ? Notification.permission : "unsupported";
   $("#s-notify-state").textContent =
-    { granted: "已開啟", denied: "被瀏覽器擋了，要去瀏覽器設定打開", default: "", unsupported: "這個瀏覽器不支援（iPhone 要先加到主畫面）" }[state];
+    { granted: "已開啟", denied: "被瀏覽器擋了，要去瀏覽器設定打開", default: "", unsupported: "這裡不支援。iPhone 要先「加入主畫面」，從主畫面打開才能開通知" }[state];
   $("#s-notify").hidden = state !== "default";
 }
 $("#s-notify").onclick = async () => {
   try { await Notification.requestPermission(); } catch {}
   showNotify();
+  if (Notification.permission === "granted") notify(settings.aiName, "通知開好了，時間到我會叫你。", "hello");
 };
 
 function readFields() {
@@ -959,6 +966,12 @@ $("#quick").addEventListener("click", (e) => {
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
 });
+
+// ---------- 加到主畫面（PWA） ----------
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js").catch(() => { /* 用 file:// 開的時候會失敗，沒關係 */ });
+}
 
 // ---------- 開始 ----------
 

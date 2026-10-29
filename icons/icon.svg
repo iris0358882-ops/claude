@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="glow" cx="0.25" cy="0.2" r="0.85">
+      <stop offset="0" stop-color="#f1c2cb"/><stop offset="1" stop-color="#e3a1ad"/>
+    </radialGradient>
+    <filter id="n" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix values="0 0 0 0 0.55 0 0 0 0 0.3 0 0 0 0 0.36 0 0 0 0.3 0"/>
+    </filter>
+    <mask id="perf"><rect width="512" height="512" fill="#fff"/><circle cx="116" cy="348" r="9" fill="#000"/><circle cx="396" cy="152" r="9" fill="#000"/><circle cx="116" cy="180" r="9" fill="#000"/><circle cx="396" cy="292" r="9" fill="#000"/><circle cx="368" cy="404" r="9" fill="#000"/><circle cx="284" cy="124" r="9" fill="#000"/><circle cx="396" cy="124" r="9" fill="#000"/><circle cx="172" cy="404" r="9" fill="#000"/><circle cx="116" cy="320" r="9" fill="#000"/><circle cx="200" cy="124" r="9" fill="#000"/><circle cx="116" cy="152" r="9" fill="#000"/><circle cx="396" cy="264" r="9" fill="#000"/><circle cx="116" cy="292" r="9" fill="#000"/><circle cx="284" cy="404" r="9" fill="#000"/><circle cx="396" cy="404" r="9" fill="#000"/><circle cx="116" cy="124" r="9" fill="#000"/><circle cx="312" cy="124" r="9" fill="#000"/><circle cx="200" cy="404" r="9" fill="#000"/><circle cx="396" cy="236" r="9" fill="#000"/><circle cx="228" cy="124" r="9" fill="#000"/><circle cx="116" cy="264" r="9" fill="#000"/><circle cx="396" cy="376" r="9" fill="#000"/><circle cx="116" cy="404" r="9" fill="#000"/><circle cx="312" cy="404" r="9" fill="#000"/><circle cx="396" cy="208" r="9" fill="#000"/><circle cx="144" cy="124" r="9" fill="#000"/><circle cx="340" cy="124" r="9" fill="#000"/><circle cx="116" cy="236" r="9" fill="#000"/><circle cx="228" cy="404" r="9" fill="#000"/><circle cx="256" cy="124" r="9" fill="#000"/><circle cx="396" cy="348" r="9" fill="#000"/><circle cx="116" cy="376" r="9" fill="#000"/><circle cx="396" cy="180" r="9" fill="#000"/><circle cx="340" cy="404" r="9" fill="#000"/><circle cx="116" cy="208" r="9" fill="#000"/><circle cx="144" cy="404" r="9" fill="#000"/><circle cx="368" cy="124" r="9" fill="#000"/><circle cx="172" cy="124" r="9" fill="#000"/><circle cx="396" cy="320" r="9" fill="#000"/><circle cx="256" cy="404" r="9" fill="#000"/></mask>
+  </defs>
+  <rect width="512" height="512" fill="url(#glow)"/>
+  <rect width="512" height="512" filter="url(#n)"/>
+  <g transform="rotate(-6 256 264)">
+    <!-- 郵票本體（齒孔邊） -->
+    <g mask="url(#perf)">
+      <rect x="128" y="138" width="280" height="280" fill="#b4365a" opacity="0.55"/>
+      <rect x="116" y="124" width="280" height="280" fill="#fbf7f4"/>
+    </g>
+    <!-- 票面：墨框裡一片夜色 -->
+    <rect x="142" y="150" width="228" height="228" fill="#f4e2e1" stroke="#3a2a2e" stroke-width="6"/>
+    <!-- 月牙 + 小星星 -->
+    <path d="M 262 196 A 72 72 0 1 0 318 318 A 58 58 0 1 1 262 196 Z" fill="#b4365a"/>
+    <path d="M 312 196 l 6 15 l 15 6 l -15 6 l -6 15 l -6 -15 l -15 -6 l 15 -6 z" fill="#3a2a2e"/>
+    <circle cx="336" cy="258" r="4.5" fill="#3a2a2e"/>
+  </g>
+  <!-- 郵戳：壓在右上角，波浪消印線往外延伸 -->
+  <g transform="rotate(-14 372 150)" stroke="#9c2c4c" fill="none" stroke-linecap="round" opacity="0.85">
+    <circle cx="372" cy="150" r="58" stroke-width="6"/>
+    <circle cx="372" cy="150" r="44" stroke-width="2.5"/>
+    <path d="M 346 150 h 52" stroke-width="3"/>
+    <path d="M 432 122 q 10 -9 20 0 t 20 0" stroke-width="5"/>
+    <path d="M 436 142 q 10 -9 20 0 t 20 0" stroke-width="5"/>
+    <path d="M 436 162 q 10 -9 20 0 t 20 0" stroke-width="5"/>
+    <path d="M 432 182 q 10 -9 20 0 t 20 0" stroke-width="5"/>
+  </g>
+</svg>
