@@ -23,6 +23,12 @@ const DEFAULTS = {
 // 中文字型：都是 Google Fonts 上免費的（中文字型會依用到的字分片下載，不會一次載完）
 const FONTS = {
   serif: { label: "明體（原本的）", family: "Noto Serif TC", stack: '"Noto Serif TC", "Songti TC", "PMingLiU", serif' },
+  yozai: {
+    label: "悠哉（手寫可愛）",
+    family: "Yozai",
+    stack: '"Yozai", "PingFang TC", sans-serif',
+    css: "https://cdn.jsdelivr.net/npm/cn-fontsource-yozai/font.css", // 不在 Google Fonts 上，用 jsDelivr 的切片版（OFL 授權）
+  },
   huninn: { label: "粉圓（圓圓可愛）", family: "Huninn", stack: '"Huninn", "PingFang TC", sans-serif' },
   iansui: { label: "芫荽（手寫感）", family: "Iansui", stack: '"Iansui", "PingFang TC", sans-serif' },
   wenkai: { label: "文楷（溫柔楷書）", family: "LXGW WenKai TC", stack: '"LXGW WenKai TC", "Kaiti TC", serif' },
@@ -172,7 +178,7 @@ function applyLook() {
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.dataset.font = settings.font;
-    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(font.family)}&display=swap`;
+    link.href = font.css ?? `https://fonts.googleapis.com/css2?family=${encodeURIComponent(font.family)}&display=swap`;
     document.head.append(link);
   }
   root.setProperty("--serif", font.stack);

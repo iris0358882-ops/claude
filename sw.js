@@ -1,6 +1,6 @@
 // 讓網站可以加到主畫面、離線也打得開。
 // 自己的檔案「先上網拿最新的，拿不到才用快取」，所以推新版上去後重開就會更新。
-const CACHE = "claude-v6";
+const CACHE = "claude-v7";
 const SHELL = [
   "./", "./index.html", "./app.js", "./style.css", "./manifest.json",
   "./vendor/anthropic-sdk.js", "./icons/icon-192.png", "./icons/icon-512.png",
