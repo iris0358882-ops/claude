@@ -58,16 +58,21 @@
 
     <main id="chat" class="chat" aria-live="polite"></main>
 
-    <div class="quick" id="quick" aria-label="快捷">
+    <div class="quick" id="quick">
       <label class="who" title="換角色"><select id="who" aria-label="聊天對象"></select></label>
-      <button type="button" data-say="今天有什麼要做的？">今天要做什麼</button>
-      <button type="button" data-say="今天跟明天天氣怎樣？要帶傘嗎？">天氣</button>
-      <button type="button" data-fill="幫我記一下：">記一件事</button>
-      <button type="button" data-fill="提醒我 ">設提醒</button>
-      <button type="button" data-say="晚餐吃什麼好？給我三個選項。">晚餐吃什麼</button>
+    </div>
+
+    <!-- 選好、還沒送出的照片 -->
+    <div class="pending" id="pending" hidden>
+      <img id="pending-img" alt="要傳的照片" />
+      <button type="button" id="pending-x" aria-label="不傳這張">×</button>
     </div>
 
     <form id="composer" class="composer" autocomplete="off">
+      <label class="attach" title="傳照片" aria-label="傳照片">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg>
+        <input id="photo-input" type="file" accept="image/*" hidden />
+      </label>
       <div class="grow" id="grow" data-value="">
         <span class="ph" id="ph" aria-hidden="true">給 Claude 發消息…</span>
         <textarea id="input" rows="1" aria-label="給 Claude 發消息" enterkeyhint="send"></textarea>

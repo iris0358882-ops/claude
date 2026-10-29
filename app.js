@@ -1,4 +1,4 @@
-const APP_VERSION = "2026.10.29-f"; // 設定最下面會顯示，用來確認手機上是不是新版
+const APP_VERSION = "2026.10.29-g"; // 設定最下面會顯示，用來確認手機上是不是新版
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
 const STORE = {
   settings: "grey.settings", history: "grey.history", bg: "grey.bg",
@@ -76,6 +76,7 @@ const PERSONAS = [
 // 小管家的能力說明，跟人設分開放，改人設不會弄壞工具
 const BUTLER_PROMPT = () =>
   "你同時是對方的日常小管家，可以用工具管理待辦、設提醒、查天氣。\n" +
+  "對方可能會傳照片（菜單、收據、課表、截圖等），看完照片就照對方的意思處理，需要的話直接記進待辦或提醒。\n" +
   "你有一本記事本當長期記憶（只會帶最近一段聊天紀錄給你，更早的要靠記事本）。" +
   "對方說了以後還用得到的事，像喜好、習慣、重要的人和計畫、希望你怎麼對待他，就用 remember 記一句；" +
   "資訊變了就 update_memory，對方要你忘記就 forget_memory。一時的心情和瑣事不用記。記了不用特地說。\n" +
@@ -173,6 +174,35 @@ async function fromLaterVersion() {
 }
 
 const $ = (s) => document.querySelector(s);
+
+/** 照片存在 IndexedDB（localStorage 只有幾 MB，放不下照片）；對話裡只記 id */
+const photos = (() => {
+  let dbp;
+  const open = () => (dbp ??= new Promise((resolve, reject) => {
+    const r = indexedDB.open("claude-photos", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("photos");
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  }));
+  const run = async (mode, fn) => {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const t = db.transaction("photos", mode);
+      const req = fn(t.objectStore("photos"));
+      t.oncomplete = () => resolve(req?.result);
+      t.onerror = () => reject(t.error);
+    });
+  };
+  const cache = new Map();
+  return {
+    async get(id) {
+      if (!cache.has(id)) cache.set(id, await run("readonly", (s) => s.get(id)).catch(() => null));
+      return cache.get(id);
+    },
+    put(id, data) { cache.set(id, data); return run("readwrite", (s) => s.put(data, id)); },
+    del(id) { cache.delete(id); return run("readwrite", (s) => s.delete(id)).catch(() => {}); },
+  };
+})();
 const chat = $("#chat");
 const input = $("#input");
 const sendBtn = $("#send");
@@ -686,6 +716,16 @@ function renderUser(msg) {
     chat.append(g);
   }
   const sig = g.lastChild;
+  if (msg.photo) {
+    const p = document.createElement("p");
+    p.className = "line photo";
+    const img = document.createElement("img");
+    img.alt = "傳出的照片";
+    img.onclick = () => p.classList.toggle("big");
+    photos.get(msg.photo).then((d) => { if (d) { img.src = d; scrollDown(); } else p.textContent = "（照片不見了）"; });
+    p.append(img);
+    g.insertBefore(p, sig);
+  }
   for (const b of toLines(msg.text)) g.insertBefore(lineEl(b), sig);
   sig.textContent = `${settings.userName} · ${fmtTime(msg.time)}`;
 }
@@ -814,8 +854,12 @@ function persist() {
   if (!save(historyKey(settings.active), history)) notice("瀏覽器的儲存空間滿了，最新的對話可能不會被記住。", "error");
 }
 
-function send(text) {
+async function send(text, photo = null) {
   const msg = { id: uid(), role: "user", text, time: Date.now() };
+  if (photo) {
+    try { await photos.put(msg.id, photo); msg.photo = msg.id; }
+    catch { notice("照片存不下來，沒有傳出去。", "error"); if (!text) return; }
+  }
   history.push(msg);
   persist();
   renderUser(msg);
@@ -885,18 +929,30 @@ async function getClient() {
 // 只送最近一段聊天紀錄：保留 80–120 則，一次往前推 40 則（推得少，快取才不會每則都失效）
 const WINDOW_KEEP = 80;
 const WINDOW_STEP = 40;
-function buildMessages() {
+function buildMessages(photoData = new Map()) {
   const out = [];
   let notes = []; // 期間跳過的提醒，併進下一則訊息讓對方知道
   const start = Math.floor(Math.max(0, history.length - WINDOW_KEEP) / WINDOW_STEP) * WINDOW_STEP;
   for (const m of history.slice(start)) {
     if (m.role === "note") { notes.push(`${fmtTime(m.at ?? m.time)}「${m.text}」`); continue; }
     if (m.role === "user") {
-      const text = notes.length ? `（系統：期間跳出過提醒 ${notes.join("、")}）\n${m.text}` : m.text;
+      let text = notes.length ? `（系統：期間跳出過提醒 ${notes.join("、")}）\n${m.text}` : m.text;
       notes = [];
+      let content = text;
+      if (m.photo) {
+        const data = photoData.get(m.photo);
+        if (!data) text = `（傳了一張照片，但已經讀不到）${text ? "\n" + text : ""}`;
+        content = data
+          ? [{ type: "image", source: { type: "base64", media_type: data.slice(5, data.indexOf(";")), data: data.slice(data.indexOf(",") + 1) } },
+             ...(text ? [{ type: "text", text }] : [])]
+          : text;
+      }
       const prev = out.at(-1);
-      if (prev?.role === "user" && typeof prev.content === "string") prev.content += "\n" + text;
-      else out.push({ role: "user", content: text });
+      if (prev?.role === "user") {
+        // 連發的訊息合併成同一個 user turn
+        if (typeof prev.content === "string" && typeof content === "string") prev.content += "\n" + content;
+        else prev.content = [...asBlocks(prev.content), ...asBlocks(content)];
+      } else out.push({ role: "user", content });
     } else if (out.length) {
       if (m.ctx) out.push({ role: "system", content: m.ctx });
       if (m.turns) out.push(...m.turns); // 用過工具的一輪：整串原樣送回
@@ -904,6 +960,15 @@ function buildMessages() {
     }
   }
   return out;
+}
+
+const asBlocks = (c) => (typeof c === "string" ? (c ? [{ type: "text", text: c }] : []) : c);
+
+/** 先把這次要送的照片從 IndexedDB 讀出來 */
+async function loadPhotosFor(list) {
+  const map = new Map();
+  for (const m of list) if (m.photo) map.set(m.photo, await photos.get(m.photo));
+  return map;
 }
 
 /**
@@ -922,11 +987,15 @@ function withCache(messages) {
 
 async function askClaude(view) {
   const client = await getClient();
-  const base = buildMessages();
+  const base = buildMessages(await loadPhotosFor(history.slice(-(WINDOW_KEEP + WINDOW_STEP))));
   // 最新那則附上現在時間（只在送出時加，不存進歷史）
   const last = base.at(-1);
-  if (last?.role === "user" && typeof last.content === "string") {
-    base[base.length - 1] = { role: "user", content: `（現在時間：${nowText()}）\n${last.content}` };
+  if (last?.role === "user") {
+    const t = `（現在時間：${nowText()}）`;
+    base[base.length - 1] = {
+      role: "user",
+      content: typeof last.content === "string" ? `${t}\n${last.content}` : [{ type: "text", text: t }, ...last.content],
+    };
   }
   const turns = []; // 這一輪新增的訊息（含工具呼叫和結果）
   const actions = [];
@@ -1061,7 +1130,7 @@ async function askDemo(view) {
 /** 高度交給 CSS（.grow 的隱形分身跟著內容撐開），這裡只同步內容和提示字 */
 function autosize() {
   $("#grow").dataset.value = input.value;
-  sendBtn.disabled = !input.value.trim();
+  sendBtn.disabled = !input.value.trim() && !pendingPhoto;
 }
 input.addEventListener("input", autosize);
 input.addEventListener("keydown", (e) => {
@@ -1073,11 +1142,30 @@ input.addEventListener("keydown", (e) => {
 $("#composer").addEventListener("submit", (e) => {
   e.preventDefault();
   const text = input.value.trim();
-  if (!text) return;
+  if (!text && !pendingPhoto) return;
+  const photo = pendingPhoto;
   input.value = "";
+  setPending(null);
   autosize();
-  send(text);
+  send(text, photo);
 });
+
+// 照片：縮到長邊 1568px（Claude 看圖的建議大小）再送
+let pendingPhoto = null;
+function setPending(data) {
+  pendingPhoto = data;
+  $("#pending").hidden = !data;
+  $("#pending-img").src = data ?? "";
+  autosize();
+}
+$("#photo-input").onchange = async (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  try { setPending(await readImage(f, 1568)); input.focus({ preventScroll: true }); }
+  catch { notice("這張照片打不開，換一張試試。", "error"); }
+};
+$("#pending-x").onclick = () => setPending(null);
 
 // ---------- 設定 ----------
 
@@ -1258,6 +1346,7 @@ imagePicker("#s-bg", STORE.bg, 1600);
 $("#s-bg-reset").onclick = () => { localStorage.removeItem(STORE.bg); applyLook(); };
 $("#s-clear").onclick = () => {
   if (!confirm(`確定清空跟 ${settings.aiName} 的所有對話？`)) return;
+  for (const m of history) if (m.photo) photos.del(m.photo);
   history = [];
   greet();
   persist();
@@ -1316,18 +1405,6 @@ $("#s-del-persona").onclick = () => {
   switchPersona(settings.personas[0].id);
   fillFields();
 };
-
-// ---------- 快捷按鈕 ----------
-
-$("#quick").addEventListener("click", (e) => {
-  const b = e.target.closest("button");
-  if (!b) return;
-  if (b.dataset.say) return send(b.dataset.say);
-  input.value = b.dataset.fill;
-  autosize();
-  input.focus();
-  input.setSelectionRange(input.value.length, input.value.length);
-});
 
 // ---------- 加到主畫面（PWA） ----------
 
