@@ -17,6 +17,15 @@ const DEFAULTS = {
   effort: "low",
   blur: 0,
   place: { name: "台北", lat: 25.033, lon: 121.565 },
+  font: "huninn",
+};
+
+// 中文字型：都是 Google Fonts 上免費的（中文字型會依用到的字分片下載，不會一次載完）
+const FONTS = {
+  serif: { label: "明體（原本的）", family: "Noto Serif TC", stack: '"Noto Serif TC", "Songti TC", "PMingLiU", serif' },
+  huninn: { label: "粉圓（圓圓可愛）", family: "Huninn", stack: '"Huninn", "PingFang TC", sans-serif' },
+  iansui: { label: "芫荽（手寫感）", family: "Iansui", stack: '"Iansui", "PingFang TC", sans-serif' },
+  wenkai: { label: "文楷（溫柔楷書）", family: "LXGW WenKai TC", stack: '"LXGW WenKai TC", "Kaiti TC", serif' },
 };
 
 // 預設的角色；每個角色的對話分開存，待辦和提醒共用
@@ -157,6 +166,19 @@ const sendBtn = $("#send");
 function applyLook() {
   const root = document.documentElement.style;
   root.setProperty("--bg-blur", `${settings.blur}px`);
+
+  const font = FONTS[settings.font] ?? FONTS.serif;
+  if (font.family !== "Noto Serif TC" && !document.querySelector(`link[data-font="${settings.font}"]`)) {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.dataset.font = settings.font;
+    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(font.family)}&display=swap`;
+    document.head.append(link);
+  }
+  root.setProperty("--serif", font.stack);
+  // 英文標題字照舊，裡面的中文跟著換
+  root.setProperty("--display", `"Playfair Display", ${font.stack}`);
+  root.setProperty("--caps", `"Cormorant Garamond", ${font.stack}`);
 
   const bg = load(STORE.bg, null);
   const photo = $("#photo");
@@ -930,7 +952,7 @@ $("#composer").addEventListener("submit", (e) => {
 const dlg = $("#settings");
 const fields = {
   aiName: $("#s-ai-name"), userName: $("#s-user-name"),
-  system: $("#s-system"), apiKey: $("#s-key"), effort: $("#s-effort"),
+  system: $("#s-system"), apiKey: $("#s-key"), effort: $("#s-effort"), font: $("#s-font"),
   blur: $("#s-blur"),
 };
 
@@ -945,6 +967,8 @@ $("#open-settings").onclick = () => {
   showNotify();
   dlg.showModal();
 };
+
+$("#s-font").replaceChildren(...Object.entries(FONTS).map(([k, f]) => new Option(f.label, k)));
 
 // 模型（每個角色各自記）
 const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
