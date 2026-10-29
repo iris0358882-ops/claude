@@ -465,6 +465,98 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .settings .persona-actions .link { color: var(--crimson-ink); }
 .quick button:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--crimson); }
 
+/* ---------- 好幾頁對話：一疊索引卡 ---------- */
+
+.quick .pages-btn { max-width: 9.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pages {
+  position: fixed;
+  z-index: 10;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 270px;
+  max-width: 86vw;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: max(18px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: var(--card-pink);
+  box-shadow: 10px 0 30px rgba(80, 20, 40, 0.25);
+  transform: translateX(-110%);
+  transition: transform 0.2s ease;
+}
+.pages.open { transform: none; }
+.pages-scrim { position: fixed; z-index: 9; inset: 0; background: rgba(80, 20, 40, 0.28); }
+.pages-head { display: flex; flex-direction: column; gap: 2px; }
+.pages-head b { font-family: var(--display); font-size: 28px; color: var(--crimson); line-height: 1.1; }
+.pages-head .caps { font-size: 11px; font-weight: 600; letter-spacing: 0.3em; color: var(--ink-soft); }
+.pages-new {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  background: var(--card);
+  border: 1.5px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--crimson);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.pages-new:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--crimson); }
+.pages-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 2px 6px 8px 2px; scrollbar-width: none; }
+.pages-list::-webkit-scrollbar { display: none; }
+.page-card {
+  display: flex;
+  align-items: flex-start;
+  border: 1px solid var(--rule);
+  background: rgba(251, 247, 244, 0.72);
+}
+.page-card:nth-child(odd) { transform: rotate(-0.6deg); }
+.page-card:nth-child(even) { transform: rotate(0.5deg); }
+.page-card[aria-current="true"] { background: var(--card); border: 1.5px solid var(--ink); box-shadow: 3px 3px 0 var(--crimson); transform: none; }
+.page-open { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 8px 12px 9px; border: 0; background: none; text-align: left; cursor: pointer; }
+.page-open .t { font-size: 15px; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page-card[aria-current="true"] .t { color: var(--crimson-ink); }
+.page-open small { font-size: 11px; color: var(--ink-soft); }
+.page-card .x, .pin .x { flex: none; border: 0; background: none; padding: 6px 8px; font-size: 18px; line-height: 1; color: var(--ink-soft); opacity: 0.5; cursor: pointer; }
+.page-card .x:hover, .pin .x:hover { opacity: 1; }
+
+/* 寬螢幕：索引卡一直放在左邊 */
+@media (min-width: 1240px) {
+  .pages { transform: none; box-shadow: none; background: transparent; width: calc((100vw - 720px) / 2 - 24px); max-width: 300px; }
+  .pages-scrim, .quick .pages-btn { display: none !important; }
+}
+
+/* ---------- 便條 ---------- */
+
+.pins-hint { margin: 12px 0; }
+.pin-list { display: flex; flex-direction: column; gap: 16px; padding: 4px 2px 8px; }
+.memo.pin { align-self: stretch; align-items: stretch; max-width: none; min-width: 0; padding: 8px 8px 12px 18px; }
+.memo.pin:nth-child(even) { transform: rotate(0.8deg); }
+.pin-head { display: flex; justify-content: space-between; align-items: center; }
+.memo.pin .memo-text { text-align: left; font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.toast {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  transform: translateX(-50%) rotate(-1deg);
+  padding: 6px 16px;
+  background: var(--card);
+  border: 1px dashed var(--crimson);
+  color: var(--crimson-ink);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+}
+
+/* 設定裡的紙張和印泥顏色 */
+.settings .swatch-row { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--ink-soft); }
+.settings .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings .swatch { width: 30px; height: 30px; padding: 0; border: 1.5px solid var(--ink); cursor: pointer; position: relative; }
+.settings .swatch[aria-pressed="true"] { box-shadow: 3px 3px 0 var(--ink); }
+.settings .swatch[aria-pressed="true"]::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 13px; text-shadow: 0 0 3px rgba(0, 0, 0, 0.45); }
+
 /* ---------- 照片 ---------- */
 
 .composer .attach {
@@ -741,3 +833,4 @@ button, input, textarea, select { font: inherit; color: inherit; }
 @supports (-webkit-touch-callout: none) {
   input, select, textarea { font-size: max(16px, 1em) !important; }
 }
+.sig .speak + .speak { margin-left: 4px; font-size: 11px; padding: 0 5px; }
