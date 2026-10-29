@@ -940,8 +940,8 @@ async function getClient() {
 }
 
 /**
- * 把歷史整理成 API 要的格式：連發的訊息合併成一個 user turn；對方的回覆原封不動回傳（含思考區塊）。
- * 歷史只會往後加、不會改，思考區塊才能一直沿用。
+ * 把歷史整理成 API 要的格式：連發的訊息合併成一個 user turn；對方的回覆回傳時拿掉思考區塊。
+ * （這一輪進行中的工具呼叫在 askClaude 的 turns 裡，思考區塊會完整保留。）
  */
 // 只送最近一段聊天紀錄：保留 80–120 則，一次往前推 40 則（推得少，快取才不會每則都失效）
 const WINDOW_KEEP = 80;
@@ -972,14 +972,23 @@ function buildMessages(photoData = new Map()) {
       } else out.push({ role: "user", content });
     } else if (out.length) {
       if (m.ctx) out.push({ role: "system", content: m.ctx });
-      if (m.turns) out.push(...m.turns); // 用過工具的一輪：整串原樣送回
-      else out.push({ role: "assistant", content: m.content ?? m.text });
+      // 過去回合的思考區塊不送回：它的簽章綁定「當時」前面的內容，
+      // 視窗往前推、時間戳只在送出那次加…前面一變就會被 API 以 400 拒收。
+      if (m.turns) out.push(...m.turns.map(stripThinking)); // 用過工具的一輪：整串送回（去掉思考）
+      else out.push(stripThinking({ role: "assistant", content: m.content ?? m.text }));
     }
   }
   return out;
 }
 
 const asBlocks = (c) => (typeof c === "string" ? (c ? [{ type: "text", text: c }] : []) : c);
+
+/** 拿掉 assistant 訊息裡的 thinking / redacted_thinking 區塊（只用在已結束的回合） */
+function stripThinking(msg) {
+  if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg;
+  const content = msg.content.filter((b) => b.type !== "thinking" && b.type !== "redacted_thinking");
+  return { ...msg, content: content.length ? content : [{ type: "text", text: "…" }] };
+}
 
 /** 先把這次要送的照片從 IndexedDB 讀出來 */
 async function loadPhotosFor(list) {
