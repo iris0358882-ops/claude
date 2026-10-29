@@ -1,4 +1,4 @@
-const APP_VERSION = "2026.10.29-k"; // 設定最下面會顯示，用來確認手機上是不是新版
+const APP_VERSION = "2026.10.29-l"; // 設定最下面會顯示，用來確認手機上是不是新版
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
 const STORE = {
   settings: "grey.settings", history: "grey.history", bg: "grey.bg",
@@ -18,7 +18,7 @@ const DEFAULTS = {
   effort: "low",
   blur: 0,
   place: { name: "台北", lat: 25.033, lon: 121.565 },
-  font: "huninn",
+  font: "iansui",
   welcome: true,
   autoSpeak: false,
   elevenKey: "",
