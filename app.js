@@ -1,3 +1,4 @@
+const APP_VERSION = "2026.10.29-c"; // 設定最下面會顯示，用來確認手機上是不是新版
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
 const STORE = {
   settings: "grey.settings", history: "grey.history", bg: "grey.bg",
@@ -1038,6 +1039,7 @@ $("#open-settings").onclick = () => {
   dlg.showModal();
 };
 
+$("#s-version").textContent = `版本 ${APP_VERSION}`;
 $("#s-font").replaceChildren(...Object.entries(FONTS).map(([k, f]) => new Option(f.label, k)));
 
 // 模型（每個角色各自記）

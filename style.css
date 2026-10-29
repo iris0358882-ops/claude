@@ -647,6 +647,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .settings .file-btn { border: 0; }
 .link { border: 0; background: none; padding: 5px 2px; font-size: 13px; color: var(--ink-soft); cursor: pointer; }
+.settings .version { text-align: center; }
 .actions { display: flex; justify-content: space-between; gap: 10px; }
 .actions button { border: 0; padding: 9px 20px; font-size: 14px; letter-spacing: 0.1em; cursor: pointer; }
 .actions .primary { background: var(--crimson); color: #fff; box-shadow: 3px 3px 0 var(--ink); }

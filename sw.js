@@ -1,6 +1,6 @@
 // 讓網站可以加到主畫面、離線也打得開。
 // 自己的檔案「先上網拿最新的，拿不到才用快取」，所以推新版上去後重開就會更新。
-const CACHE = "claude-v8";
+const CACHE = "claude-v9";
 const SHELL = [
   "./", "./index.html", "./app.js", "./style.css", "./manifest.json",
   "./vendor/anthropic-sdk.js", "./icons/icon-192.png", "./icons/icon-512.png",
@@ -22,8 +22,9 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   // API、天氣、字型這些外部請求不碰
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
+  // 每次都跟伺服器確認有沒有新版（GitHub Pages 會讓瀏覽器快取 10 分鐘，不這樣更新會很慢）
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request.url, { cache: "no-cache", credentials: "same-origin" })
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();
