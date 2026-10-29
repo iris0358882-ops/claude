@@ -15,6 +15,13 @@
   --rule: rgba(239, 233, 220, 0.16);
   --hazard: repeating-linear-gradient(-45deg, var(--accent) 0 9px, var(--on-accent) 9px 18px);
 
+  /* 材質：粗糙細紋紙（光照浮雕出來的纖維）與細顆粒 */
+  --tex-paper: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='360'%3E%3Cfilter id='f' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9 0.07' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='2.2'%3E%3CfeDistantLight azimuth='45' elevation='52'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+  --tex-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.48 0 0 0 0 0.42 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* 透明紙膠帶：微黃、有光澤、兩端撕開的鋸齒 */
+  --tape: linear-gradient(180deg, rgba(255, 252, 232, 0.36), rgba(255, 252, 232, 0.2) 42%, rgba(255, 252, 232, 0.3));
+  --torn: polygon(0 8%, 5% 0, 95% 0, 100% 10%, 96% 26%, 100% 42%, 97% 58%, 100% 74%, 96% 90%, 99% 100%, 4% 100%, 0 92%, 4% 76%, 1% 60%, 4% 44%, 0 28%);
+
   /* 對話的底色 */
   --hl-ai: var(--surface-2);
   --hl-me: var(--cream);
@@ -69,9 +76,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
 /* 紙張纖維的顆粒感，照片上也疊一層，讓整體像印刷品 */
 .grain {
   pointer-events: none;
-  opacity: 0.5;
-  mix-blend-mode: screen;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.88 0 0 0 0 0.8 0 0 0 0.22 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.32;
+  mix-blend-mode: overlay;
+  background-size: 360px 360px;
+  background-image: var(--tex-paper);
 }
 
 /* ---------- 版面 ---------- */
@@ -96,7 +104,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
   gap: 14px;
   position: relative;
   padding: 20px 12px 12px;
-  background: var(--surface);
+  background: var(--tex-grain), var(--surface);
+  background-size: 160px, auto;
+  background-blend-mode: soft-light, normal;
   outline: 1px solid var(--rule);
   outline-offset: -5px;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
@@ -274,13 +284,40 @@ button, input, textarea, select { font: inherit; color: inherit; }
   background: var(--surface);
 }
 
+/* ---------- 紙片與膠帶 ---------- */
+
+.piece {
+  position: relative;
+  transform: rotate(var(--tilt, 0deg));
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35), 0 8px 16px -6px rgba(0, 0, 0, 0.6);
+}
+.piece::before, .piece::after {
+  position: absolute;
+  z-index: 2;
+  width: 62px;
+  height: 22px;
+  pointer-events: none;
+  background: var(--tex-grain), var(--tape);
+  background-size: 160px, auto;
+  background-blend-mode: soft-light, normal;
+  box-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.25), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  clip-path: var(--torn);
+}
+.tape-a::before { content: ""; left: calc(var(--tx) - 31px); top: -12px; transform: rotate(var(--tr)); }
+.tape-b::before, .tape-b::after { content: ""; width: 50px; top: -7px; }
+.tape-b::before { left: -20px; transform: rotate(-38deg); }
+.tape-b::after { right: -20px; transform: rotate(38deg); }
+.tape-c::before { content: ""; width: 42px; left: -28px; top: calc(50% - 11px); transform: rotate(calc(var(--tr) - 3deg)); }
+.turn.me .tape-c::before { left: auto; right: -28px; }
+
 /* ---------- 對話 ---------- */
 
 .chat {
   flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 26px 2px 20px;
+  padding: 26px 20px 20px; /* 左右留白給貼出邊緣的膠帶 */
+  margin: 0 -10px;
   display: flex;
   flex-direction: column;
   gap: 26px;
@@ -295,14 +332,16 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .line { margin: 0; max-width: 88%; font-size: 17px; line-height: 1.95; letter-spacing: 0.04em; animation: rise 0.4s ease both; }
 .turn.me .line { text-align: right; }
 .hl {
-  padding: 4px 10px;
-  background: var(--hl-ai);
-  -webkit-box-decoration-break: clone;
-  box-decoration-break: clone;
+  display: inline-block;
+  padding: 8px 16px;
+  background: var(--tex-grain), var(--hl-ai);
+  background-size: 160px, auto;
+  background-blend-mode: soft-light, normal;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  text-align: left;
 }
-.turn.me .hl { background: var(--hl-me); }
+.line { margin-top: 4px; }
 .hl code {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.86em;
@@ -336,13 +375,15 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .line.box .hl {
   display: inline-block;
   padding: 10px 18px;
-  background: var(--cream);
+  background: var(--tex-grain), var(--cream);
+  background-size: 160px, auto;
+  background-blend-mode: multiply, normal;
   color: var(--on-accent);
-  box-shadow: 6px 6px 0 var(--accent);
+  box-shadow: 6px 6px 0 var(--accent), 7px 9px 14px -4px rgba(0, 0, 0, 0.6);
   text-align: left;
 }
 /* 對方的問句：整塊黃色 */
-.turn.ai .line.box .hl { background: var(--accent); box-shadow: 6px 6px 0 rgba(239, 233, 220, 0.82); }
+.turn.ai .line.box .hl { background: var(--tex-grain), var(--accent); background-size: 160px, auto; background-blend-mode: multiply, normal; box-shadow: 6px 6px 0 rgba(239, 233, 220, 0.82), 7px 9px 14px -4px rgba(0, 0, 0, 0.6); }
 .time-tag {
   margin-top: -4px;
   padding: 2px 8px;
@@ -357,8 +398,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
   margin: 0;
   max-width: min(62%, 240px);
   padding: 8px;
-  background: var(--cream);
-  box-shadow: 7px 7px 0 var(--accent);
+  background: var(--tex-grain), var(--cream);
+  background-size: 160px, auto;
+  background-blend-mode: multiply, normal;
+  box-shadow: 7px 7px 0 var(--accent), 8px 10px 16px -4px rgba(0, 0, 0, 0.6);
   animation: rise 0.4s ease both;
 }
 .frame.sticker { max-width: min(46%, 170px); }
@@ -420,7 +463,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
   align-items: flex-end;
   gap: 10px;
   padding: 8px 8px 8px 18px;
-  background: var(--surface);
+  background: var(--tex-grain), var(--surface);
+  background-size: 160px, auto;
+  background-blend-mode: soft-light, normal;
   outline: 1px solid var(--rule);
   outline-offset: -5px;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
@@ -487,7 +532,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
   padding: 20px 22px 22px;
-  background: var(--surface);
+  background: var(--tex-grain), var(--surface);
+  background-size: 160px, auto;
+  background-blend-mode: soft-light, normal;
   outline: 1px solid var(--rule);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
 }

@@ -189,9 +189,33 @@ function toLines(text) {
 const STICKER_LINE = /^\[貼圖[:：]\s*(.+?)\s*\]$/;
 const isQuestion = (t) => /[?？]$/.test(t);
 
-function frameEl(src, kind, alt = "") {
+/**
+ * 每張「紙片」用固定的種子決定歪斜角度和膠帶貼法，重新整理畫面也不會亂跳。
+ * a：上緣一條膠帶　b：兩個上角各一條　c：橫貼在側邊
+ */
+function hashSeed(str) {
+  let h = 2166136261;
+  for (const ch of str) h = Math.imul(h ^ ch.codePointAt(0), 16777619);
+  return () => {
+    h = Math.imul(h ^ (h >>> 15), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    return ((h ^= h >>> 16) >>> 0) / 4294967296;
+  };
+}
+
+function tape(el, seed, maxTilt = 1.6) {
+  const r = hashSeed(seed);
+  el.classList.add("piece", `tape-${"abc"[Math.floor(r() * 3)]}`);
+  el.style.setProperty("--tilt", `${((r() * 2 - 1) * maxTilt).toFixed(2)}deg`);
+  el.style.setProperty("--tx", `${(25 + r() * 50).toFixed(0)}%`);
+  el.style.setProperty("--tr", `${((r() * 2 - 1) * 7).toFixed(1)}deg`);
+  return el;
+}
+
+function frameEl(src, kind, alt = "", seed = alt) {
   const f = document.createElement("figure");
   f.className = `frame ${kind}`;
+  tape(f, seed, 3);
   const img = document.createElement("img");
   img.src = src;
   img.alt = alt;
@@ -201,7 +225,7 @@ function frameEl(src, kind, alt = "") {
 }
 
 /** 對方的一行：程式碼、貼圖、問句（加框）或一般的話 */
-function lineEl(b) {
+function lineEl(b, seed) {
   if (b.code != null) {
     const p = document.createElement("p");
     p.className = "line code";
@@ -210,10 +234,11 @@ function lineEl(b) {
   }
   const name = b.text.match(STICKER_LINE)?.[1];
   const st = name && stickers.find((x) => x.name === name);
-  if (st) return frameEl(st.src, "sticker", st.name);
+  if (st) return frameEl(st.src, "sticker", st.name, seed);
   const p = document.createElement("p");
   p.className = isQuestion(b.text) ? "line box" : "line";
   p.innerHTML = `<span class="hl">${inline(b.text)}</span>`;
+  tape(p.firstChild, seed, p.classList.contains("box") ? 1.6 : 0.9);
   return p;
 }
 
@@ -238,22 +263,26 @@ function renderUser(msg) {
     chat.append(g);
   }
   const tag = g.lastChild;
-  if (msg.image) g.insertBefore(frameEl(msg.image, "photo", "照片"), tag);
-  else if (msg.sticker) g.insertBefore(frameEl(msg.sticker.src, "sticker", msg.sticker.name), tag);
+  if (msg.image) g.insertBefore(frameEl(msg.image, "photo", "照片", msg.id), tag);
+  else if (msg.sticker) g.insertBefore(frameEl(msg.sticker.src, "sticker", msg.sticker.name, msg.id), tag);
   else {
-    for (const b of toLines(msg.text)) {
+    toLines(msg.text).forEach((b, i) => {
       const p = document.createElement("p");
       p.className = b.code != null ? "line code" : "line box";
       if (b.code != null) p.textContent = b.code;
-      else p.innerHTML = `<span class="hl">${inline(b.text)}</span>`;
+      else {
+        p.innerHTML = `<span class="hl">${inline(b.text)}</span>`;
+        tape(p.firstChild, `${msg.id}:${i}`);
+      }
       g.insertBefore(p, tag);
-    }
+    });
   }
   tag.textContent = fmtTime(msg.time);
 }
 
 /** 對方的一輪：一行式思考摘要 / 一行一行的話 / 署名。回傳可以邊收邊更新的控制器。 */
 function renderAssistant(msg = {}) {
+  const turnId = msg.id ?? uid();
   const g = document.createElement("section");
   g.className = "turn ai";
   g.dataset.day = dayKey(msg.time ?? Date.now());
@@ -309,7 +338,7 @@ function renderAssistant(msg = {}) {
     },
     setText(t) {
       toLines(t).forEach((b, i) => {
-        const el = lineEl(b);
+        const el = lineEl(b, `${turnId}:${i}`);
         if (!rendered[i]) {
           lines.insertBefore(el, typing);
           rendered.push(el);
@@ -485,14 +514,15 @@ async function reply() {
   status.textContent = "輸入中";
   status.classList.add("busy");
 
-  const view = renderAssistant();
+  const id = uid();
+  const view = renderAssistant({ id });
   view.typing(true);
   let failed = false;
   try {
     const result = settings.apiKey ? await askClaude(view) : await askDemo(view);
     const time = Date.now();
     if (result) {
-      history.push({ id: uid(), role: "assistant", time, ...result });
+      history.push({ id, role: "assistant", time, ...result });
       persist();
       renderTide();
     }
