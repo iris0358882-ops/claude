@@ -1,11 +1,25 @@
-import { drawScene, createRain } from "./rain.js";
+import { createRain } from "./rain.js";
 
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
-const STORE = { settings: "grey.settings", history: "grey.history", avatar: "grey.avatar", aiAvatar: "grey.aiAvatar", bg: "grey.bg" };
+const STORE = { settings: "grey.settings", history: "grey.history", aiAvatar: "grey.aiAvatar", bg: "grey.bg" };
 const REPLY_DELAY = 1100; // 停止輸入多久後對方才回（可以連發好幾則）
+const CONTEXT_WINDOW = 1_000_000;
+
+// 每百萬 token 的美元價格（標準價；快取讀取另計，1 小時快取寫入是輸入價的 2 倍）
+const PRICES = [
+  ["claude-opus-5-5", { input: 4, output: 20, read: 0.2 }],
+  ["claude-sonnet-5-5", { input: 2, output: 10, read: 0.2 }],
+  ["claude-haiku-5-5", { input: 0.1, output: 0.5, read: 0.01 }],
+  ["claude-fable-5-1", { input: 10, output: 50, read: 0.25 }],
+  ["claude-opus-5", { input: 5, output: 25, read: 0.5 }],
+];
+const priceOf = (model = "") => PRICES.find(([id]) => model.startsWith(id))?.[1];
 
 const DEFAULTS = {
   aiName: "Grey",
+  title: "Grey",
+  subtitle: "觀測記錄",
+  userName: "我",
   system:
     "你是 Grey，正在用通訊軟體跟對方聊天。\n" +
     "說話簡短、口語、有點冷但很在乎對方。\n" +
@@ -14,9 +28,10 @@ const DEFAULTS = {
   apiKey: "",
   model: "claude-opus-5-5",
   effort: "low",
-  blur: 14,
-  gray: true,
-  rain: true,
+  injectTime: true,
+  blur: 0,
+  gray: false,
+  rain: false,
 };
 
 // ---------- 儲存 ----------
@@ -28,8 +43,15 @@ const save = (k, v) => {
   try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; }
 };
 
-const settings = { ...DEFAULTS, ...load(STORE.settings, {}) };
-/** @type {{id:string, role:'user'|'assistant', text:string, time:number, thinking?:string, content?:any[]}[]} */
+// 舊版預設是黑白、模糊、下雨；換風格後只有還沒自己調過的人改用新預設
+const stored = load(STORE.settings, {});
+if (!("injectTime" in stored)) { delete stored.blur; delete stored.gray; delete stored.rain; }
+const settings = { ...DEFAULTS, ...stored };
+
+/**
+ * @type {{id:string, role:'user'|'assistant', text:string, time:number,
+ *   thinking?:string, content?:any[], ctx?:string, usage?:object, model?:string, secs?:number}[]}
+ */
 let history = load(STORE.history, []);
 
 const $ = (s) => document.querySelector(s);
@@ -38,9 +60,8 @@ const input = $("#input");
 const sendBtn = $("#send");
 const status = $("#status");
 
-// ---------- 背景 ----------
+// ---------- 外觀 ----------
 
-drawScene($("#scene"));
 const rain = createRain($("#rain"));
 
 function applyLook() {
@@ -54,16 +75,23 @@ function applyLook() {
   photo.style.backgroundImage = bg ? `url("${bg}")` : "";
   photo.classList.toggle("on", !!bg);
 
-  $("#ai-name-top").textContent = settings.aiName;
-  paintAvatar($("#ai-avatar-top"), "assistant");
-  document.title = settings.aiName;
+  const avatar = load(STORE.aiAvatar, null);
+  $("#ai-avatar-top").style.backgroundImage = avatar ? `url("${avatar}")` : "";
+  $("#ai-tag").textContent = settings.aiName;
+  $("#title").textContent = settings.title;
+  $("#subtitle").textContent = settings.subtitle;
+  input.placeholder = `給 ${settings.aiName} 發消息…`;
+  document.title = settings.title;
 }
 
-// ---------- 渲染 ----------
+// ---------- 小工具 ----------
 
 const pad = (n) => String(n).padStart(2, "0");
-const fmtTime = (t) => { const d = new Date(t); return `${d.getHours()}:${pad(d.getMinutes())}`; };
+const fmtTime = (t) => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const uid = () => Math.random().toString(36).slice(2, 10);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const WEEK = "日一二三四五六";
 
 const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const inline = (s) =>
@@ -71,8 +99,8 @@ const inline = (s) =>
     .replace(/`([^`\n]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
 
-/** 把一段回覆拆成一則一則泡泡：每行一則，程式碼區塊整塊一則。 */
-function toBubbles(text) {
+/** 把一段回覆拆成一行一行：每行一則，程式碼區塊整塊一則。 */
+function toLines(text) {
   const out = [];
   let code = null;
   for (const line of text.split("\n")) {
@@ -88,154 +116,128 @@ function toBubbles(text) {
   return out;
 }
 
-function bubbleHtml(b) {
-  return b.code != null ? `<code style="display:block;white-space:pre;overflow-x:auto">${escapeHtml(b.code)}</code>` : inline(b.text);
-}
-
-function paintAvatar(el, role) {
-  if (role === "user") {
-    const img = load(STORE.avatar, null);
-    el.style.backgroundImage = img ? `url("${img}")` : defaultAvatar;
+function lineEl(b) {
+  const p = document.createElement("p");
+  if (b.code != null) {
+    p.className = "line code";
+    p.textContent = b.code;
   } else {
-    // 沒換過就保留 CSS 的漸層球
-    const img = load(STORE.aiAvatar, null);
-    el.style.background = img ? `center / cover no-repeat url("${img}")` : "";
+    p.className = "line";
+    p.innerHTML = `<span class="hl">${inline(b.text)}</span>`;
   }
+  return p;
 }
 
-function avatarEl(role) {
-  const el = document.createElement("div");
-  el.className = `avatar ${role === "user" ? "me" : "ai"}`;
-  paintAvatar(el, role);
-  return el;
-}
-
-// 預設的「我」：一個灰白小貓臉
-const defaultAvatar = `url("data:image/svg+xml,${encodeURIComponent(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><radialGradient id='g' cx='.5' cy='.35' r='.8'><stop offset='0' stop-color='#fafafa'/><stop offset='1' stop-color='#bdbdbf'/></radialGradient></defs><rect width='100' height='100' fill='#3a3a3c'/><path d='M22 44 L28 20 L42 34 Q50 31 58 34 L72 20 L78 44 Q84 74 50 80 Q16 74 22 44Z' fill='url(#g)'/><path d='M36 52 q4 -4 8 0 M56 52 q4 -4 8 0' stroke='#333' stroke-width='3' fill='none' stroke-linecap='round'/><path d='M44 62 q3 4 6 0 q3 4 6 0' stroke='#333' stroke-width='2.5' fill='none' stroke-linecap='round'/></svg>`,
-)}")`;
-
-const tickSvg = `<svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="tk" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#9fd3ff"/><stop offset=".5" stop-color="#b9a4ff"/><stop offset="1" stop-color="#ff9fd0"/></linearGradient></defs><path d="M4.5 12.5l4.5 4.5L19.5 6" fill="none" stroke="url(#tk)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const chevronSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>`;
+const stampSvg = (top, mid) => `<svg class="stamp" viewBox="0 0 100 100" aria-hidden="true">
+  <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="2"/>
+  <circle cx="50" cy="50" r="28" fill="none" stroke="currentColor" stroke-width="1.6"/>
+  <text font-family="Playfair Display, serif" font-size="9.5" letter-spacing="2.2" fill="currentColor"><textPath href="#stamp-arc">${top}</textPath></text>
+  <text x="50" y="55" text-anchor="middle" font-family="Playfair Display, serif" font-weight="700" font-size="13" fill="currentColor" transform="rotate(-8 50 50)">${mid}</text>
+</svg>`;
 
 function nearBottom() {
-  return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 120;
+  return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 140;
 }
 function scrollDown(force = false) {
   if (force || nearBottom()) requestAnimationFrame(() => (chat.scrollTop = chat.scrollHeight));
 }
 
-/** 使用者連發的訊息放在同一組 */
-function userGroup() {
-  const lastEl = chat.lastElementChild;
-  if (lastEl?.classList.contains("me")) return lastEl;
-  const g = document.createElement("section");
-  g.className = "group me";
-  chat.append(g);
-  return g;
-}
+// ---------- 渲染 ----------
 
+/** 使用者連發的訊息放在同一組，署名放在最後 */
 function renderUser(msg) {
-  const g = userGroup();
-  for (const b of toBubbles(msg.text)) {
-    const row = document.createElement("div");
-    row.className = "row-msg";
-    const bubble = document.createElement("div");
-    bubble.className = "bubble";
-    bubble.innerHTML = bubbleHtml(b);
-    row.append(bubble, avatarEl("user"));
-    g.append(row);
+  let g = chat.lastElementChild;
+  if (!g?.classList.contains("me")) {
+    g = document.createElement("section");
+    g.className = "turn me";
+    g.dataset.day = dayKey(msg.time);
+    g.append(document.createElement("div"));
+    g.lastChild.className = "sig";
+    chat.append(g);
   }
+  const sig = g.lastChild;
+  for (const b of toLines(msg.text)) g.insertBefore(lineEl(b), sig);
+  sig.textContent = `${settings.userName} · ${fmtTime(msg.time)}`;
 }
 
-/** 對方的一組回覆：名字 ✓ 思考摘要 ^ / 泡泡們 / 時間。回傳可以邊收邊更新的控制器。 */
+/** 對方的一輪：封緘的思考卡 / 一行一行的話 / 署名。回傳可以邊收邊更新的控制器。 */
 function renderAssistant(msg = {}) {
   const g = document.createElement("section");
-  g.className = "group ai";
+  g.className = "turn ai";
+  g.dataset.day = dayKey(msg.time ?? Date.now());
 
-  const meta = document.createElement("div");
-  meta.className = "meta";
-  meta.innerHTML = `<span class="nm"></span>${tickSvg}`;
-  meta.querySelector(".nm").textContent = settings.aiName;
-
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.className = "think-toggle";
-  toggle.innerHTML = `<span class="lbl">思考摘要</span>${chevronSvg}`;
-  toggle.setAttribute("aria-expanded", "false");
-  toggle.hidden = true;
-  meta.append(toggle);
-
-  const thinking = document.createElement("div");
-  thinking.className = "thinking";
-  thinking.hidden = true;
-  toggle.onclick = () => {
-    const open = thinking.hidden;
-    thinking.hidden = !open;
-    toggle.setAttribute("aria-expanded", String(open));
-    if (open) thinking.scrollTop = thinking.scrollHeight;
+  const sealed = document.createElement("div");
+  sealed.className = "sealed";
+  sealed.hidden = true;
+  sealed.innerHTML = `<div class="sealed-inner">
+    <div class="sealed-head"><span>This turn · Sealed</span><span>Ephemera</span></div>
+    <p class="sealed-title"><b></b> · 內容保密</p>
+    <button type="button" class="sealed-open">揭開看看 ›</button>
+    <div class="sealed-text" hidden></div>
+    ${stampSvg("THIS TURN · SEALED · EPHEMERA ·", "SEALED")}
+  </div>`;
+  const title = sealed.querySelector(".sealed-title b");
+  const openBtn = sealed.querySelector(".sealed-open");
+  const text = sealed.querySelector(".sealed-text");
+  openBtn.onclick = () => {
+    text.hidden = !text.hidden;
+    openBtn.textContent = text.hidden ? "揭開看看 ›" : "重新封上 ‹";
+    if (!text.hidden) text.scrollTop = text.scrollHeight;
   };
 
-  const bubbles = document.createElement("div");
-  bubbles.className = "group";
-  const time = document.createElement("div");
-  time.className = "time";
+  const lines = document.createElement("div");
+  lines.className = "turn lines";
+  const sig = document.createElement("div");
+  sig.className = "sig";
 
-  g.append(meta, thinking, bubbles, time);
+  g.append(sealed, lines, sig);
   chat.append(g);
 
-  let rows = [];
-  let typingRow = null;
+  let rendered = [];
+  let typing = null;
 
   const view = {
-    el: g,
     typing(on) {
-      if (on && !typingRow) {
-        typingRow = document.createElement("div");
-        typingRow.className = "row-msg";
-        typingRow.innerHTML = `<div class="bubble typing"><i></i><i></i><i></i></div>`;
-        typingRow.prepend(avatarEl("assistant"));
-        if (rows.length) typingRow.firstChild.classList.add("ghost");
-        bubbles.append(typingRow);
-      } else if (!on && typingRow) {
-        typingRow.remove();
-        typingRow = null;
+      if (on && !typing) {
+        typing = document.createElement("p");
+        typing.className = "line";
+        typing.innerHTML = `<span class="hl typing">···</span>`;
+        lines.append(typing);
+      } else if (!on && typing) {
+        typing.remove();
+        typing = null;
       }
       scrollDown();
     },
-    setThinking(text, live = false) {
-      if (!text) return;
-      toggle.hidden = false;
-      toggle.classList.toggle("live", live);
-      thinking.textContent = text;
-      if (!thinking.hidden) thinking.scrollTop = thinking.scrollHeight;
+    setThinking(t, live = false) {
+      if (!t) return;
+      sealed.hidden = false;
+      sealed.classList.toggle("live", live);
+      title.textContent = live ? "這一輪正在想" : "這一輪想了一些事";
+      text.textContent = t;
+      if (!text.hidden) text.scrollTop = text.scrollHeight;
+      scrollDown();
     },
-    setText(text) {
-      const list = toBubbles(text);
-      list.forEach((b, i) => {
-        let row = rows[i];
-        if (!row) {
-          row = document.createElement("div");
-          row.className = "row-msg";
-          const av = avatarEl("assistant");
-          if (i > 0) av.classList.add("ghost");
-          const bubble = document.createElement("div");
-          bubble.className = "bubble";
-          row.append(av, bubble);
-          bubbles.insertBefore(row, typingRow);
-          rows.push(row);
-          if (typingRow) typingRow.firstChild.classList.add("ghost");
+    setText(t) {
+      toLines(t).forEach((b, i) => {
+        const el = lineEl(b);
+        if (!rendered[i]) {
+          lines.insertBefore(el, typing);
+          rendered.push(el);
+        } else if (rendered[i].innerHTML !== el.innerHTML) {
+          rendered[i].innerHTML = el.innerHTML;
         }
-        const html = bubbleHtml(b);
-        if (row.lastChild.innerHTML !== html) row.lastChild.innerHTML = html;
       });
       scrollDown();
     },
     finish(t) {
       view.typing(false);
-      toggle.classList.remove("live");
-      time.textContent = fmtTime(t);
-      if (!rows.length && toggle.hidden) g.remove();
+      if (sealed.classList.contains("live")) {
+        sealed.classList.replace("live", "done");
+        title.textContent = "這一輪想了一些事";
+      }
+      sig.textContent = `${settings.aiName} · ${fmtTime(t)}`;
+      if (!rendered.length && sealed.hidden) g.remove();
     },
   };
 
@@ -258,8 +260,108 @@ function notice(text, kind = "") {
 function renderAll() {
   chat.replaceChildren();
   for (const m of history) m.role === "user" ? renderUser(m) : renderAssistant(m);
+  renderDays();
+  renderTide();
   scrollDown(true);
 }
+
+/** 頁首的 DAY 列：最近有對話的幾天，點一下跳到那天 */
+function renderDays() {
+  const nav = $("#days");
+  const today = dayKey(Date.now());
+  const days = [...new Set([...history.map((m) => dayKey(m.time)), today])].sort().slice(-4);
+  nav.innerHTML = `<span class="lbl">DAY</span>`;
+  for (const d of days) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = Number(d.slice(-2));
+    b.title = d;
+    b.classList.toggle("today", d === today);
+    b.onclick = () => chat.querySelector(`[data-day="${d}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    nav.append(b);
+  }
+}
+
+const lastUsage = () => history.findLast((m) => m.usage);
+const contextUsed = (u) => u.input + u.cacheRead + u.cacheWrite + u.output;
+
+function renderTide() {
+  const m = lastUsage();
+  const pct = m ? Math.min(100, (contextUsed(m.usage) / CONTEXT_WINDOW) * 100) : 0;
+  $("#tide-fill").style.height = `${pct}%`;
+  $("#tide-num").textContent = pct < 10 ? pct.toFixed(1).replace(/\.0$/, "") : Math.round(pct);
+}
+
+// ---------- 帳本 ----------
+
+const fmtUsd = (n) => `$${n.toFixed(4)}`;
+const fmtNum = (n) => n.toLocaleString("en-US");
+
+function costOf(m) {
+  const p = priceOf(m.model);
+  if (!p || !m.usage) return null;
+  const u = m.usage;
+  return {
+    input: (u.input * p.input) / 1e6,
+    cacheRead: (u.cacheRead * p.read) / 1e6,
+    cacheWrite: (u.cacheWrite * p.input * 2) / 1e6,
+    output: (u.output * p.output) / 1e6,
+  };
+}
+const sum = (c) => c.input + c.cacheRead + c.cacheWrite + c.output;
+
+function openLedger() {
+  const body = $("#ledger-body");
+  const m = lastUsage();
+  if (!m) {
+    $("#l-time").textContent = "--:--";
+    body.innerHTML = `<p class="ledger-big">$0<small>還沒有紀錄</small></p>
+      <p class="ledger-note">填入 API Key 開始聊天後，這裡會記下每一輪用了多少、花了多少。示範模式不計費。</p>`;
+    $("#ledger").showModal();
+    return;
+  }
+
+  const u = m.usage;
+  const c = costOf(m);
+  const prompt = u.input + u.cacheRead + u.cacheWrite;
+  const hit = prompt ? Math.round((u.cacheRead / prompt) * 100) : 0;
+  const all = history.map(costOf).filter(Boolean).reduce((a, x) => a + sum(x), 0);
+  const used = contextUsed(u);
+  const d = new Date(m.time);
+  const cell = (k) => (c ? fmtUsd(c[k]) : "—");
+
+  $("#l-time").textContent = fmtTime(m.time);
+  body.innerHTML = `
+    <svg class="postmark" viewBox="0 0 140 100" aria-hidden="true">
+      <g fill="none" stroke="currentColor" stroke-width="1.6">
+        <path d="M0 32 q10 -7 20 0 t20 0 t20 0 t20 0"/><path d="M0 44 q10 -7 20 0 t20 0 t20 0 t20 0"/>
+        <path d="M0 56 q10 -7 20 0 t20 0 t20 0 t20 0"/><path d="M0 68 q10 -7 20 0 t20 0 t20 0 t20 0"/>
+        <circle cx="100" cy="50" r="38" stroke-width="2"/><circle cx="100" cy="50" r="26"/>
+      </g>
+      <path d="M100 58 c-8 -6 -12 -10 -12 -15 a6 6 0 0 1 12 -2 a6 6 0 0 1 12 2 c0 5 -4 9 -12 15z" fill="currentColor"/>
+      <text x="100" y="84" text-anchor="middle" font-family="Playfair Display, serif" font-size="8" fill="currentColor">${d.toLocaleString("en-US", { month: "short" }).toUpperCase()} ${d.getDate()}</text>
+    </svg>
+    <p class="ledger-big">${c ? fmtUsd(sum(c)) : "—"}</p>
+    <p class="ledger-note">${escapeHtml(m.model || "")}<br>${d.getMonth() + 1}/${d.getDate()} 週${WEEK[d.getDay()]} · 快取命中 ${hit}%${m.secs ? ` · ${m.secs.toFixed(1)}s` : ""}</p>
+    <table class="ledger-table">
+      <tr><td>input</td><td>${fmtNum(u.input)}</td><td>${cell("input")}</td></tr>
+      <tr><td>cache read</td><td>${fmtNum(u.cacheRead)}</td><td>${cell("cacheRead")}</td></tr>
+      <tr><td>cache write</td><td>${fmtNum(u.cacheWrite)}</td><td>${cell("cacheWrite")}</td></tr>
+      <tr><td>output</td><td>${fmtNum(u.output)}</td><td>${cell("output")}</td></tr>
+      <tr class="total"><td>本次對話累計</td><td></td><td>${fmtUsd(all)}</td></tr>
+    </table>
+    <div class="ledger-section">
+      <h3>Context · 上下文</h3>
+      <div class="ledger-bar"><i style="width:${Math.max(0.5, (used / CONTEXT_WINDOW) * 100)}%"></i></div>
+      <div class="ledger-row"><span>已用 ${fmtNum(used)}</span><span>還剩 ${fmtNum(Math.max(0, CONTEXT_WINDOW - used))} / 1M</span></div>
+    </div>
+    ${m.ctx ? `<div class="ledger-section"><h3>Injected · 本輪注入</h3><div class="ledger-inject">${escapeHtml(m.ctx)}</div></div>` : ""}
+    <p class="ledger-note" style="margin-top:16px">價格依官方標準價估算：1 小時快取寫入算輸入價 2 倍。實際以 Console 帳單為準。</p>`;
+  $("#ledger").showModal();
+}
+$("#tide").onclick = openLedger;
+$("#ledger-close").onclick = () => $("#ledger").close();
+$("#ledger").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 
 // ---------- 對話流程 ----------
 
@@ -267,11 +369,7 @@ let replyTimer = 0;
 let generating = false;
 
 function persist() {
-  if (!save(STORE.history, history)) {
-    // 存不下就丟掉最舊的紀錄
-    history = history.slice(Math.floor(history.length / 3));
-    save(STORE.history, history);
-  }
+  if (!save(STORE.history, history)) notice("瀏覽器的儲存空間滿了，最新的對話可能不會被記住。", "error");
 }
 
 function send(text) {
@@ -279,6 +377,7 @@ function send(text) {
   history.push(msg);
   persist();
   renderUser(msg);
+  renderDays();
   scrollDown(true);
   scheduleReply();
 }
@@ -297,24 +396,25 @@ async function reply() {
 
   const view = renderAssistant();
   view.typing(true);
+  let failed = false;
   try {
     const result = settings.apiKey ? await askClaude(view) : await askDemo(view);
+    const time = Date.now();
     if (result) {
-      const msg = { id: uid(), role: "assistant", time: Date.now(), ...result };
-      history.push(msg);
+      history.push({ id: uid(), role: "assistant", time, ...result });
       persist();
-      view.finish(msg.time);
-    } else {
-      view.finish(Date.now());
+      renderTide();
     }
+    view.finish(time);
   } catch (err) {
+    failed = true;
     view.finish(Date.now());
     notice(errorText(err), "error");
   } finally {
     generating = false;
-    status.textContent = "在線";
+    status.textContent = "醒著";
     status.classList.remove("busy");
-    if (history.at(-1)?.role === "user" && !document.querySelector(".notice.error:last-child")) scheduleReply();
+    if (!failed && history.at(-1)?.role === "user") scheduleReply();
   }
 }
 
@@ -342,8 +442,18 @@ async function getClient() {
   return clientPromise;
 }
 
-/** 把歷史整理成 API 要的格式：連發的訊息合併成一個 user turn；對方的回覆原封不動回傳（含思考區塊）。 */
-function buildMessages() {
+function timeNote() {
+  const d = new Date();
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return `現在時間：${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}（週${WEEK[d.getDay()]}）${fmtTime(d)}，${zone}`;
+}
+
+/**
+ * 把歷史整理成 API 要的格式：連發的訊息合併成一個 user turn；
+ * 當時注入的時間以 system 訊息放在那輪回覆前面；對方的回覆原封不動回傳（含思考區塊）。
+ * 歷史只會往後加、不會改，快取和思考區塊才能一直沿用。
+ */
+function buildMessages(ctx) {
   const out = [];
   for (const m of history) {
     if (m.role === "user") {
@@ -351,21 +461,27 @@ function buildMessages() {
       if (prev?.role === "user") prev.content += "\n" + m.text;
       else out.push({ role: "user", content: m.text });
     } else if (out.length) {
+      if (m.ctx) out.push({ role: "system", content: m.ctx });
       out.push({ role: "assistant", content: m.content ?? m.text });
     }
   }
+  if (ctx) out.push({ role: "system", content: ctx });
   return out;
 }
 
 async function askClaude(view) {
   const client = await getClient();
+  const ctx = settings.injectTime ? timeNote() : "";
+  const started = performance.now();
   const stream = client.beta.messages.stream({
     model: settings.model || DEFAULTS.model,
     max_tokens: 16000,
     system: settings.system,
     thinking: { type: "adaptive", display: "summarized" },
     output_config: { effort: settings.effort },
-    messages: buildMessages(),
+    messages: buildMessages(ctx),
+    // 舊的對話用快取價計費（約輸入價的一成以下），聊天間隔常超過 5 分鐘，所以用 1 小時
+    cache_control: { type: "ephemeral", ttl: "1h" },
     // 被安全分類器擋下時，伺服器自動換一個模型重試
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
@@ -388,8 +504,21 @@ async function askClaude(view) {
     return null;
   }
   if (!text.trim()) return null;
-  // 只留下 API 需要回傳的區塊，存回歷史時保持原樣
-  return { text, thinking, content: final.content };
+  const u = final.usage;
+  return {
+    text,
+    thinking,
+    content: final.content,
+    ctx,
+    model: final.model,
+    secs: (performance.now() - started) / 1000,
+    usage: {
+      input: u.input_tokens ?? 0,
+      cacheRead: u.cache_read_input_tokens ?? 0,
+      cacheWrite: u.cache_creation_input_tokens ?? 0,
+      output: u.output_tokens ?? 0,
+    },
+  };
 }
 
 // ---------- 示範模式（沒有 API Key 時） ----------
@@ -400,7 +529,7 @@ const DEMO = [
     text: "嗯，我知道。\n你一開口我就知道你要什麼了。\n先說說今天怎麼了。",
   },
   {
-    thinking: "外面在下雨，提一下天氣，讓對話有畫面感。\n然後把話題丟回去。",
+    thinking: "提一下天氣，讓對話有畫面感。\n然後把話題丟回去。",
     text: "我這邊在下雨。\n窗戶上全是水珠，什麼都看不清楚。\n你那邊呢？",
   },
   {
@@ -418,8 +547,6 @@ const DEMO = [
 ];
 let demoIndex = 0;
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
 async function askDemo(view) {
   const pick = DEMO[demoIndex++ % DEMO.length];
   let t = "";
@@ -428,9 +555,8 @@ async function askDemo(view) {
     view.setThinking(t, true);
     await sleep(14);
   }
-  const lines = pick.text.split("\n");
   let shown = "";
-  for (const line of lines) {
+  for (const line of pick.text.split("\n")) {
     view.typing(true);
     await sleep(500 + line.length * 55);
     shown += (shown ? "\n" : "") + line;
@@ -467,8 +593,9 @@ $("#composer").addEventListener("submit", (e) => {
 
 const dlg = $("#settings");
 const fields = {
-  aiName: $("#s-ai-name"), system: $("#s-system"), apiKey: $("#s-key"), model: $("#s-model"),
-  effort: $("#s-effort"), blur: $("#s-blur"), gray: $("#s-gray"), rain: $("#s-rain"),
+  aiName: $("#s-ai-name"), title: $("#s-title"), subtitle: $("#s-subtitle"), userName: $("#s-user-name"),
+  system: $("#s-system"), apiKey: $("#s-key"), model: $("#s-model"), effort: $("#s-effort"),
+  injectTime: $("#s-inject-time"), blur: $("#s-blur"), gray: $("#s-gray"), rain: $("#s-rain"),
 };
 
 $("#open-settings").onclick = () => {
@@ -480,9 +607,7 @@ function readFields() {
   for (const [k, el] of Object.entries(fields)) {
     settings[k] = el.type === "checkbox" ? el.checked : el.type === "range" ? Number(el.value) : el.value.trim();
   }
-  settings.aiName ||= DEFAULTS.aiName;
-  settings.system ||= DEFAULTS.system;
-  settings.model ||= DEFAULTS.model;
+  for (const k of ["aiName", "title", "subtitle", "userName", "system", "model"]) settings[k] ||= DEFAULTS[k];
   save(STORE.settings, settings);
   applyLook();
 }
@@ -510,28 +635,18 @@ function readImage(file, max) {
   });
 }
 
-$("#s-avatar").onchange = async (e) => {
-  const f = e.target.files[0];
-  if (!f) return;
-  if (!save(STORE.avatar, await readImage(f, 256))) alert("圖片太大，存不下。");
-  e.target.value = "";
-};
-$("#s-avatar-reset").onclick = () => localStorage.removeItem(STORE.avatar);
-$("#s-ai-avatar").onchange = async (e) => {
-  const f = e.target.files[0];
-  if (!f) return;
-  if (!save(STORE.aiAvatar, await readImage(f, 256))) alert("圖片太大，存不下。");
-  e.target.value = "";
-  applyLook();
-};
+function imagePicker(inputSel, key, max) {
+  $(inputSel).onchange = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (!save(key, await readImage(f, max))) alert("圖片太大，存不下。");
+    e.target.value = "";
+    applyLook();
+  };
+}
+imagePicker("#s-ai-avatar", STORE.aiAvatar, 400);
+imagePicker("#s-bg", STORE.bg, 1600);
 $("#s-ai-avatar-reset").onclick = () => { localStorage.removeItem(STORE.aiAvatar); applyLook(); };
-$("#s-bg").onchange = async (e) => {
-  const f = e.target.files[0];
-  if (!f) return;
-  if (!save(STORE.bg, await readImage(f, 1600))) alert("圖片太大，存不下。");
-  e.target.value = "";
-  applyLook();
-};
 $("#s-bg-reset").onclick = () => { localStorage.removeItem(STORE.bg); applyLook(); };
 $("#s-clear").onclick = () => {
   if (!confirm("確定清空所有對話？")) return;
@@ -544,10 +659,7 @@ $("#s-clear").onclick = () => {
 
 applyLook();
 if (!history.length) {
-  history.push({
-    id: uid(), role: "assistant", time: Date.now(),
-    text: "嗯，你來了。\n外面在下雨。",
-  });
+  history.push({ id: uid(), role: "assistant", time: Date.now(), text: "嗯，你來了。\n今天想記下什麼？" });
   persist();
 }
 renderAll();
