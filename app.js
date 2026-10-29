@@ -1,4 +1,4 @@
-const APP_VERSION = "2026.10.29-j"; // 設定最下面會顯示，用來確認手機上是不是新版
+const APP_VERSION = "2026.10.29-k"; // 設定最下面會顯示，用來確認手機上是不是新版
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
 const STORE = {
   settings: "grey.settings", history: "grey.history", bg: "grey.bg",
@@ -21,6 +21,7 @@ const DEFAULTS = {
   font: "huninn",
   welcome: true,
   autoSpeak: false,
+  elevenKey: "",
 };
 
 // 中文字型：都是 Google Fonts 上免費的（中文字型會依用到的字分片下載，不會一次載完）
@@ -820,7 +821,7 @@ function renderAssistant(msg = {}) {
         title.textContent = "這一輪想了一些事";
       }
       sig.textContent = `${settings.aiName} · ${fmtTime(t)}`;
-      if (rendered.length && "speechSynthesis" in window) {
+      if (rendered.length) {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "speak";
@@ -1189,7 +1190,7 @@ const dlg = $("#settings");
 const fields = {
   aiName: $("#s-ai-name"), userName: $("#s-user-name"),
   system: $("#s-system"), apiKey: $("#s-key"), effort: $("#s-effort"), font: $("#s-font"),
-  welcome: $("#s-welcome"), autoSpeak: $("#s-autospeak"),
+  welcome: $("#s-welcome"), autoSpeak: $("#s-autospeak"), elevenKey: $("#s-eleven-key"),
   blur: $("#s-blur"),
 };
 
@@ -1197,6 +1198,7 @@ function fillFields() {
   for (const [k, el] of Object.entries(fields)) el.type === "checkbox" ? (el.checked = settings[k]) : (el.value = settings[k]);
   showModel();
   showFontState();
+  showVoices();
   $("#s-del-persona").hidden = settings.personas.length < 2;
 }
 $("#open-settings").onclick = () => {
@@ -1436,22 +1438,117 @@ function pickVoice(lang) {
   }
   return null;
 }
-function speak(text, btn) {
+/** 手機內建的聲音 */
+function speakDevice(text, btn) {
   const synth = window.speechSynthesis;
-  if (speakingBtn === btn && synth.speaking) { synth.cancel(); return; } // 再按一次停止
-  synth.cancel();
+  if (!synth) return notice("這個瀏覽器不能朗讀。", "error");
   const lang = /[\u3040-\u30ff]/.test(text) ? "ja-JP" : "zh-TW"; // 有假名就用日文唸（ハル）
-  const u = new SpeechSynthesisUtterance(text.replace(/[*`#>]/g, ""));
+  const u = new SpeechSynthesisUtterance(text);
   u.lang = lang;
   const voice = pickVoice(lang);
   if (voice) u.voice = voice;
-  const reset = () => { if (speakingBtn) speakingBtn.textContent = "▶"; speakingBtn = null; };
-  reset();
-  speakingBtn = btn;
-  btn.textContent = "■";
-  u.onend = u.onerror = () => { if (speakingBtn === btn) reset(); };
+  u.onend = u.onerror = () => { if (speakingBtn === btn) resetSpeak(); };
   synth.speak(u);
 }
+
+// ElevenLabs：只有按 ▶ 才會唸（每次都算字數），唸過的同一段會記在記憶體裡，重播不再付費
+const player = new Audio();
+const ttsCache = new Map();
+let playerUnlocked = false;
+function unlockPlayer() {
+  // iPhone 要在按下去的那一刻先播過聲音，之後等網路回來才放得出來
+  if (playerUnlocked) return;
+  playerUnlocked = true;
+  player.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+  player.play().catch(() => {});
+}
+async function speakEleven(text, voiceId, btn) {
+  const key = `${voiceId}\n${text}`;
+  let url = ttsCache.get(key);
+  if (!url) {
+    btn.textContent = "…";
+    const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
+      method: "POST",
+      headers: { "xi-api-key": settings.elevenKey, "Content-Type": "application/json", Accept: "audio/mpeg" },
+      body: JSON.stringify({ text }),
+    });
+    if (!r.ok) {
+      const msg = r.status === 401 ? "ElevenLabs 的 key 不對，去設定檢查一下。"
+        : r.status === 429 ? "ElevenLabs 那邊太忙或額度用完了，晚點再試。"
+        : `ElevenLabs 沒唸出來（${r.status}）。`;
+      throw new Error(msg);
+    }
+    url = URL.createObjectURL(await r.blob());
+    ttsCache.set(key, url);
+  }
+  if (speakingBtn !== btn) return; // 等的時候被按停了
+  btn.textContent = "■";
+  player.src = url;
+  player.onended = player.onerror = () => { if (speakingBtn === btn) resetSpeak(); };
+  await player.play();
+}
+
+function resetSpeak() {
+  if (speakingBtn) speakingBtn.textContent = "▶";
+  speakingBtn = null;
+}
+function stopSpeaking() {
+  window.speechSynthesis?.cancel();
+  player.pause();
+  resetSpeak();
+}
+function speak(text, btn) {
+  if (speakingBtn === btn) return stopSpeaking(); // 再按一次停止
+  stopSpeaking();
+  text = text.replace(/[*`#>]/g, "");
+  speakingBtn = btn;
+  btn.textContent = "■";
+  const voiceId = persona().voiceId;
+  if (settings.elevenKey && voiceId) {
+    unlockPlayer();
+    speakEleven(text, voiceId, btn).catch((e) => {
+      if (speakingBtn === btn) resetSpeak();
+      notice(e?.message || "朗讀失敗。", "error");
+    });
+  } else {
+    speakDevice(text, btn);
+  }
+}
+
+// 設定：ElevenLabs 的聲音清單（每個角色各自選）
+let elevenVoices = load("grey.elevenVoices", []);
+function showVoices() {
+  const sel = $("#s-voice");
+  const current = persona().voiceId ?? "";
+  const opts = [new Option("手機內建的聲音", "")];
+  for (const v of elevenVoices) opts.push(new Option(v.name, v.id));
+  if (current && !elevenVoices.some((v) => v.id === current)) opts.push(new Option(`（${current}）`, current));
+  sel.replaceChildren(...opts);
+  sel.value = current;
+  $("#s-voice-row").hidden = !settings.elevenKey;
+}
+async function loadElevenVoices() {
+  const state = $("#s-voice-state");
+  if (!settings.elevenKey) return;
+  state.textContent = "載入中…";
+  try {
+    const r = await fetch("https://api.elevenlabs.io/v2/voices?page_size=100", { headers: { "xi-api-key": settings.elevenKey } });
+    if (!r.ok) throw new Error(r.status === 401 ? "key 不對" : `錯誤 ${r.status}`);
+    const j = await r.json();
+    elevenVoices = (j.voices ?? []).map((v) => ({ id: v.voice_id, name: v.name }));
+    save("grey.elevenVoices", elevenVoices);
+    state.textContent = `找到 ${elevenVoices.length} 個聲音`;
+  } catch (e) {
+    state.textContent = `載不到聲音清單：${e.message}`;
+  }
+  showVoices();
+}
+$("#s-voice").onchange = (e) => {
+  persona().voiceId = e.target.value || undefined;
+  save(STORE.settings, settings);
+};
+$("#s-voice-load").onclick = loadElevenVoices;
+$("#s-eleven-key").addEventListener("change", () => { readFields(); showVoices(); if (settings.elevenKey && !elevenVoices.length) loadElevenVoices(); });
 if ("speechSynthesis" in window) speechSynthesis.getVoices(); // 讓手機先把聲音清單載入
 
 // ---------- 打開 App 時主動打招呼 ----------

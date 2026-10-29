@@ -132,8 +132,21 @@
           </select>
         </label>
         <label class="check"><input id="s-welcome" type="checkbox" /> 隔幾小時再打開時，讓對方先打招呼</label>
-        <label class="check"><input id="s-autospeak" type="checkbox" /> 新回覆自動唸出來（平常按署名旁的 ▶）</label>
+
         <p class="hint">Key 只存在這個瀏覽器的 localStorage，直接從瀏覽器呼叫 API，請只在自己的裝置上使用。</p>
+      </fieldset>
+
+      <fieldset>
+        <h3 class="legend">朗讀 <span class="hint">按署名旁的 ▶ 才會唸</span></h3>
+        <label>ElevenLabs API Key <span class="hint">不填就用手機內建的聲音</span>
+          <input id="s-eleven-key" type="password" placeholder="sk_…" autocomplete="off" />
+        </label>
+        <div id="s-voice-row">
+          <label>這個角色的聲音 <span class="hint" id="s-voice-state"></span><select id="s-voice"></select></label>
+          <button type="button" class="link" id="s-voice-load">重新載入我的聲音</button>
+        </div>
+        <label class="check"><input id="s-autospeak" type="checkbox" /> 新回覆自動唸出來</label>
+        <p class="hint">ElevenLabs 依字數計費（免費方案每月有一些額度），同一段重播不會再算。</p>
       </fieldset>
 
       <fieldset>
