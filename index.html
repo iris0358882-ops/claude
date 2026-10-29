@@ -14,7 +14,6 @@
   <!-- 背景：粉色紙張（或自己的照片） -->
   <div class="backdrop" aria-hidden="true">
     <div id="photo" class="photo"></div>
-    <canvas id="rain"></canvas>
     <div class="grain"></div>
   </div>
 
@@ -49,18 +48,18 @@
       </div>
 
       <fieldset>
-        <legend>對方</legend>
+        <h3 class="legend">對方</h3>
         <label>名字 <input id="s-ai-name" type="text" maxlength="24" /></label>
         <label>人設（system prompt）<textarea id="s-system" rows="5"></textarea></label>
       </fieldset>
 
       <fieldset>
-        <legend>我</legend>
+        <h3 class="legend">我</h3>
         <label>我的名字 <input id="s-user-name" type="text" maxlength="24" /></label>
       </fieldset>
 
       <fieldset>
-        <legend>Claude API <span class="hint">不填 key 就用示範回覆</span></legend>
+        <h3 class="legend">Claude API <span class="hint">不填 key 就用示範回覆</span></h3>
         <label>API Key <input id="s-key" type="password" placeholder="sk-ant-…" autocomplete="off" /></label>
         <label>模型 <input id="s-model" type="text" /></label>
         <label>思考強度
@@ -76,15 +75,13 @@
       </fieldset>
 
       <fieldset>
-        <legend>背景</legend>
+        <h3 class="legend">背景</h3>
         <div class="row">
           <span>背景照片</span>
           <label class="file-btn">選擇圖片<input id="s-bg" type="file" accept="image/*" hidden /></label>
           <button type="button" class="link" id="s-bg-reset">還原</button>
         </div>
         <label>照片模糊 <input id="s-blur" type="range" min="0" max="30" step="1" /></label>
-        <label class="check"><input id="s-gray" type="checkbox" /> 照片黑白</label>
-        <label class="check"><input id="s-rain" type="checkbox" /> 玻璃上的雨</label>
       </fieldset>
 
       <div class="actions">

@@ -1,5 +1,3 @@
-import { createRain } from "./rain.js";
-
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
 const STORE = { settings: "grey.settings", history: "grey.history", bg: "grey.bg" };
 const REPLY_DELAY = 1100; // 停止輸入多久後對方才回（可以連發好幾則）
@@ -15,8 +13,6 @@ const DEFAULTS = {
   model: "claude-opus-5-5",
   effort: "low",
   blur: 0,
-  gray: false,
-  rain: false,
 };
 
 // ---------- 儲存 ----------
@@ -28,11 +24,9 @@ const save = (k, v) => {
   try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; }
 };
 
-// 從別的主題換過來時，背景改用這個主題的預設（不模糊、不去色、不下雨）
+// 從別的主題換過來時，照片模糊改回這個主題的預設（不模糊）
 const stored = load(STORE.settings, {});
-if (stored.theme !== "scrapbook") {
-  delete stored.blur; delete stored.gray; delete stored.rain;
-}
+if (stored.theme !== "scrapbook") delete stored.blur;
 const settings = { ...DEFAULTS, ...stored, theme: "scrapbook" };
 
 /**
@@ -75,13 +69,9 @@ const sendBtn = $("#send");
 
 // ---------- 外觀 ----------
 
-const rain = createRain($("#rain"));
-
 function applyLook() {
   const root = document.documentElement.style;
   root.setProperty("--bg-blur", `${settings.blur}px`);
-  root.setProperty("--bg-gray", settings.gray ? "1" : "0");
-  settings.rain ? rain.start() : rain.stop();
 
   const bg = load(STORE.bg, null);
   const photo = $("#photo");
@@ -470,7 +460,7 @@ const dlg = $("#settings");
 const fields = {
   aiName: $("#s-ai-name"), userName: $("#s-user-name"),
   system: $("#s-system"), apiKey: $("#s-key"), model: $("#s-model"), effort: $("#s-effort"),
-  blur: $("#s-blur"), gray: $("#s-gray"), rain: $("#s-rain"),
+  blur: $("#s-blur"),
 };
 
 $("#open-settings").onclick = () => {

@@ -19,7 +19,6 @@
   --hl-me: rgba(255, 255, 255, 0.94);
 
   --bg-blur: 0px;
-  --bg-gray: 0;
 }
 
 * { box-sizing: border-box; }
@@ -60,7 +59,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .photo {
   background-size: cover;
   background-position: center;
-  filter: grayscale(var(--bg-gray)) blur(var(--bg-blur));
+  filter: blur(var(--bg-blur));
   transform: scale(1.04);
   opacity: 0;
   transition: opacity 0.6s ease;
@@ -353,10 +352,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
   flex-direction: column;
   gap: 10px;
 }
-.settings legend {
-  float: left;
-  width: 100%;
-  padding: 0;
+.settings .legend {
+  margin: 0;
   font-family: var(--caps);
   font-weight: 600;
   font-size: 13px;
@@ -377,7 +374,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .settings textarea { resize: vertical; line-height: 1.6; }
 .settings input[type="checkbox"], .settings input[type="range"] { accent-color: var(--crimson); }
 .settings .hint { margin: 0; font-size: 12px; font-weight: 400; letter-spacing: 0.02em; color: var(--ink-soft); }
-.settings legend .hint { margin-left: 6px; }
+.settings .legend .hint { margin-left: 6px; }
 .settings .row { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .settings .row > span { flex: 1; }
 .settings .file-btn {
