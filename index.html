@@ -24,26 +24,9 @@
   </svg>
 
   <div class="app">
-    <header class="log">
-      <div class="portrait">
-        <div class="portrait-img" id="ai-avatar-top"></div>
-        <div class="portrait-tag" id="ai-tag">GREY</div>
-      </div>
-
-      <div class="log-main">
-        <div class="log-top">
-          <span class="kicker">Field Notes</span>
-          <span class="status" id="status">醒著</span>
-          <button class="menu-btn" id="open-settings" aria-label="設定">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg>
-          </button>
-        </div>
-        <h1 id="title">Grey</h1>
-        <div class="sub"><span id="subtitle">手帳</span><i>seen · noted · kept</i></div>
-        <nav class="days" id="days" aria-label="日期"></nav>
-      </div>
-
-    </header>
+    <button class="menu-btn" id="open-settings" aria-label="設定">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg>
+    </button>
 
     <main id="chat" class="chat" aria-live="polite"></main>
 
@@ -68,18 +51,11 @@
       <fieldset>
         <legend>對方</legend>
         <label>名字 <input id="s-ai-name" type="text" maxlength="24" /></label>
-        <div class="row">
-          <span>頭像</span>
-          <label class="file-btn">選擇圖片<input id="s-ai-avatar" type="file" accept="image/*" hidden /></label>
-          <button type="button" class="link" id="s-ai-avatar-reset">還原</button>
-        </div>
         <label>人設（system prompt）<textarea id="s-system" rows="5"></textarea></label>
       </fieldset>
 
       <fieldset>
-        <legend>頁首</legend>
-        <label>大標題 <input id="s-title" type="text" maxlength="24" /></label>
-        <label>副標題 <input id="s-subtitle" type="text" maxlength="24" /></label>
+        <legend>我</legend>
         <label>我的名字 <input id="s-user-name" type="text" maxlength="24" /></label>
       </fieldset>
 

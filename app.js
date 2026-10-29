@@ -1,12 +1,10 @@
 import { createRain } from "./rain.js";
 
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
-const STORE = { settings: "grey.settings", history: "grey.history", aiAvatar: "grey.aiAvatar", bg: "grey.bg" };
+const STORE = { settings: "grey.settings", history: "grey.history", bg: "grey.bg" };
 const REPLY_DELAY = 1100; // 停止輸入多久後對方才回（可以連發好幾則）
 const DEFAULTS = {
   aiName: "Grey",
-  title: "Grey",
-  subtitle: "手帳",
   userName: "我",
   system:
     "你是 Grey，正在用通訊軟體跟對方聊天。\n" +
@@ -34,7 +32,6 @@ const save = (k, v) => {
 const stored = load(STORE.settings, {});
 if (stored.theme !== "scrapbook") {
   delete stored.blur; delete stored.gray; delete stored.rain;
-  if (["觀測記錄", "夜間筆記"].includes(stored.subtitle)) delete stored.subtitle;
 }
 const settings = { ...DEFAULTS, ...stored, theme: "scrapbook" };
 
@@ -75,7 +72,6 @@ const $ = (s) => document.querySelector(s);
 const chat = $("#chat");
 const input = $("#input");
 const sendBtn = $("#send");
-const status = $("#status");
 
 // ---------- 外觀 ----------
 
@@ -92,13 +88,8 @@ function applyLook() {
   photo.style.backgroundImage = bg ? `url("${bg}")` : "";
   photo.classList.toggle("on", !!bg);
 
-  const avatar = load(STORE.aiAvatar, null);
-  $("#ai-avatar-top").style.backgroundImage = avatar ? `url("${avatar}")` : "";
-  $("#ai-tag").textContent = settings.aiName;
-  $("#title").textContent = settings.title;
-  $("#subtitle").textContent = settings.subtitle;
   input.placeholder = `給 ${settings.aiName} 發消息…`;
-  document.title = settings.title;
+  document.title = settings.aiName;
 }
 
 // ---------- 小工具 ----------
@@ -276,25 +267,7 @@ function notice(text, kind = "") {
 function renderAll() {
   chat.replaceChildren();
   for (const m of history) m.role === "user" ? renderUser(m) : renderAssistant(m);
-  renderDays();
   scrollDown(true);
-}
-
-/** 頁首的 DAY 列：最近有對話的幾天，點一下跳到那天 */
-function renderDays() {
-  const nav = $("#days");
-  const today = dayKey(Date.now());
-  const days = [...new Set([...history.map((m) => dayKey(m.time)), today])].sort().slice(-4);
-  nav.innerHTML = `<span class="lbl">DAY</span>`;
-  for (const d of days) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = Number(d.slice(-2));
-    b.title = d;
-    b.classList.toggle("today", d === today);
-    b.onclick = () => chat.querySelector(`[data-day="${d}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    nav.append(b);
-  }
 }
 
 // ---------- 對話流程 ----------
@@ -311,7 +284,6 @@ function send(text) {
   history.push(msg);
   persist();
   renderUser(msg);
-  renderDays();
   scrollDown(true);
   scheduleReply();
 }
@@ -325,8 +297,6 @@ function scheduleReply() {
 async function reply() {
   if (history.at(-1)?.role !== "user") return;
   generating = true;
-  status.textContent = "輸入中";
-  status.classList.add("busy");
 
   const view = renderAssistant();
   view.typing(true);
@@ -345,8 +315,6 @@ async function reply() {
     notice(errorText(err), "error");
   } finally {
     generating = false;
-    status.textContent = "醒著";
-    status.classList.remove("busy");
     if (!failed && history.at(-1)?.role === "user") scheduleReply();
   }
 }
@@ -500,7 +468,7 @@ $("#composer").addEventListener("submit", (e) => {
 
 const dlg = $("#settings");
 const fields = {
-  aiName: $("#s-ai-name"), title: $("#s-title"), subtitle: $("#s-subtitle"), userName: $("#s-user-name"),
+  aiName: $("#s-ai-name"), userName: $("#s-user-name"),
   system: $("#s-system"), apiKey: $("#s-key"), model: $("#s-model"), effort: $("#s-effort"),
   blur: $("#s-blur"), gray: $("#s-gray"), rain: $("#s-rain"),
 };
@@ -514,7 +482,7 @@ function readFields() {
   for (const [k, el] of Object.entries(fields)) {
     settings[k] = el.type === "checkbox" ? el.checked : el.type === "range" ? Number(el.value) : el.value.trim();
   }
-  for (const k of ["aiName", "title", "subtitle", "userName", "system", "model"]) settings[k] ||= DEFAULTS[k];
+  for (const k of ["aiName", "userName", "system", "model"]) settings[k] ||= DEFAULTS[k];
   save(STORE.settings, settings);
   applyLook();
 }
@@ -551,9 +519,7 @@ function imagePicker(inputSel, key, max) {
     applyLook();
   };
 }
-imagePicker("#s-ai-avatar", STORE.aiAvatar, 400);
 imagePicker("#s-bg", STORE.bg, 1600);
-$("#s-ai-avatar-reset").onclick = () => { localStorage.removeItem(STORE.aiAvatar); applyLook(); };
 $("#s-bg-reset").onclick = () => { localStorage.removeItem(STORE.bg); applyLook(); };
 $("#s-clear").onclick = () => {
   if (!confirm("確定清空所有對話？")) return;
