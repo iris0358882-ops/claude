@@ -107,7 +107,16 @@
       <fieldset>
         <h3 class="legend">Claude API <span class="hint">不填 key 就用示範回覆</span></h3>
         <label>API Key <input id="s-key" type="password" placeholder="sk-ant-…" autocomplete="off" /></label>
-        <label>模型 <input id="s-model" type="text" /></label>
+        <label>模型 <span class="hint">每個角色各自記住</span>
+          <select id="s-model">
+            <option value="claude-opus-5-5">Opus 5.5（最細膩・$4 / $20）</option>
+            <option value="claude-sonnet-5-5">Sonnet 5.5（推薦・$2 / $10）</option>
+            <option value="claude-haiku-5-5">Haiku 5.5（最便宜・$0.1 / $0.5）</option>
+            <option value="custom">自己輸入…</option>
+          </select>
+          <input id="s-model-custom" type="text" placeholder="模型 ID，例如 claude-opus-5" hidden />
+        </label>
+        <p class="hint">價格是每百萬 token 的輸入 / 輸出（美金）。</p>
         <label>思考強度
           <select id="s-effort">
             <option value="low">low（聊天最快）</option>

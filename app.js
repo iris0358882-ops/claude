@@ -52,14 +52,14 @@ const PERSONAS = [
 ];
 
 // 小管家的能力說明，跟人設分開放，改人設不會弄壞工具
-const BUTLER_PROMPT = (now) =>
+const BUTLER_PROMPT = () =>
   "你同時是對方的日常小管家，可以用工具管理待辦、設提醒、查天氣。\n" +
   "對方說要做什麼、要記什麼、要你提醒什麼，就直接用工具處理，不用先問可不可以。\n" +
   "時間沒講清楚才問；「晚上」「明早」這種就自己挑合理的時間，並在回覆裡講出來。\n" +
   "問到待辦或天氣時一定先用工具查，不要憑印象回答。\n" +
   "用工具之後照你原本的語氣簡短回覆，不要把工具結果整段念出來。\n" +
-  (settings.userName && settings.userName !== "我" ? `對方的名字是 ${settings.userName}。\n` : "") +
-  `現在時間：${now}。`;
+  "每則訊息開頭的（現在時間：…）是系統附上的，用來判斷時間，不是對方打的字。\n" +
+  (settings.userName && settings.userName !== "我" ? `對方的名字是 ${settings.userName}。` : "");
 
 // ---------- 儲存 ----------
 
@@ -98,14 +98,18 @@ for (const [id, from, to] of [["lu", "陸沉", "レイ"], ["lu", "レン", "レ�
   }
 }
 function preset_(id) { return PERSONAS.find((p) => p.id === id); }
+// 以前只有一個全域模型：每個還沒有自己模型的角色都先沿用它
+for (const p of settings.personas) p.model ||= settings.model || DEFAULTS.model;
 const persona = () => settings.personas.find((p) => p.id === settings.active) ?? settings.personas[0];
 const preset = (id) => PERSONAS.find((p) => p.id === id);
 /** settings.aiName / system 永遠是目前角色的 */
 function mirrorPersona() {
   const p = persona();
+  p.model ||= settings.model || DEFAULTS.model;
   settings.active = p.id;
   settings.aiName = p.name;
   settings.system = p.system;
+  settings.model = p.model;
 }
 mirrorPersona();
 const historyKey = (id) => (id === "claude" ? STORE.history : `${STORE.history}.${id}`);
@@ -749,9 +753,28 @@ function buildMessages() {
   return out;
 }
 
+/**
+ * 在最後一則訊息標上快取點：下一輪送出時，前面整段對話直接讀快取，
+ * 讀快取只收一般輸入價的 5–10%，聊越久省越多。
+ */
+function withCache(messages) {
+  const out = messages.slice();
+  const m = out.at(-1);
+  if (!m) return out;
+  const blocks = typeof m.content === "string" ? [{ type: "text", text: m.content }] : m.content.slice();
+  blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: "ephemeral" } };
+  out[out.length - 1] = { ...m, content: blocks };
+  return out;
+}
+
 async function askClaude(view) {
   const client = await getClient();
   const base = buildMessages();
+  // 最新那則附上現在時間（只在送出時加，不存進歷史）
+  const last = base.at(-1);
+  if (last?.role === "user" && typeof last.content === "string") {
+    base[base.length - 1] = { role: "user", content: `（現在時間：${nowText()}）\n${last.content}` };
+  }
   const turns = []; // 這一輪新增的訊息（含工具呼叫和結果）
   const actions = [];
   let thinking = "";
@@ -763,12 +786,12 @@ async function askClaude(view) {
       max_tokens: 16000,
       system: [
         { type: "text", text: settings.system },
-        { type: "text", text: BUTLER_PROMPT(nowText()) },
+        { type: "text", text: BUTLER_PROMPT() },
       ],
       thinking: { type: "adaptive", display: "summarized" },
       output_config: { effort: settings.effort },
       tools: TOOLS,
-      messages: [...base, ...turns],
+      messages: withCache([...base, ...turns]),
       // 被安全分類器擋下時，伺服器自動換一個模型重試
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
@@ -907,12 +930,13 @@ $("#composer").addEventListener("submit", (e) => {
 const dlg = $("#settings");
 const fields = {
   aiName: $("#s-ai-name"), userName: $("#s-user-name"),
-  system: $("#s-system"), apiKey: $("#s-key"), model: $("#s-model"), effort: $("#s-effort"),
+  system: $("#s-system"), apiKey: $("#s-key"), effort: $("#s-effort"),
   blur: $("#s-blur"),
 };
 
 function fillFields() {
   for (const [k, el] of Object.entries(fields)) el.type === "checkbox" ? (el.checked = settings[k]) : (el.value = settings[k]);
+  showModel();
   $("#s-del-persona").hidden = settings.personas.length < 2;
 }
 $("#open-settings").onclick = () => {
@@ -921,6 +945,27 @@ $("#open-settings").onclick = () => {
   showNotify();
   dlg.showModal();
 };
+
+// 模型（每個角色各自記）
+const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
+function showModel() {
+  const known = MODELS.includes(settings.model);
+  $("#s-model").value = known ? settings.model : "custom";
+  $("#s-model-custom").hidden = known;
+  $("#s-model-custom").value = known ? "" : settings.model;
+}
+function setModel(id) {
+  if (!id) return;
+  persona().model = settings.model = id;
+  save(STORE.settings, settings);
+}
+$("#s-model").onchange = (e) => {
+  const v = e.target.value;
+  $("#s-model-custom").hidden = v !== "custom";
+  if (v === "custom") $("#s-model-custom").focus();
+  else setModel(v);
+};
+$("#s-model-custom").addEventListener("input", (e) => setModel(e.target.value.trim()));
 
 // 天氣地點
 function showPlace(msg) {
@@ -981,7 +1026,7 @@ function readFields() {
   const p = persona();
   settings.aiName ||= preset(p.id)?.name ?? "新角色";
   settings.system ||= preset(p.id)?.system ?? DEFAULTS.system;
-  for (const k of ["userName", "model"]) settings[k] ||= DEFAULTS[k];
+  settings.userName ||= DEFAULTS.userName;
   p.name = settings.aiName;
   p.system = settings.system;
   save(STORE.settings, settings);
