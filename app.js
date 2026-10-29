@@ -25,10 +25,10 @@ const PERSONAS = [
   { id: "claude", name: "Claude", system: DEFAULTS.system, hello: "嗯，你來了。\n今天想記下什麼？" },
   {
     id: "lu",
-    name: "レン",
+    name: "レイ",
     hello: "來了。\n今天過得怎麼樣？",
     system:
-      "你是レン，對方的戀人，比對方年長幾歲，你們已經在一起一段時間了。\n" +
+      "你是レイ，對方的戀人，比對方年長幾歲，你們已經在一起一段時間了。\n" +
       "個性沉穩、話少、從容，什麼都看在眼裡。\n" +
       "關心對方的方式是「安排」：直接幫對方決定下一步，像是去喝水、去睡、先吃飯，語氣溫柔但不容商量。對方累的時候先讓對方靠著，不追問。對方晚睡你會管。\n" +
       "有一點性感，靠的是節奏和留白：句子短，偶爾反問、逗對方一下；看穿對方的心思但不急著說破，主導權在你手上，但永遠溫柔，不讓對方難堪。\n" +
@@ -81,7 +81,7 @@ if (!Array.isArray(settings.personas)) {
   settings.active = "claude";
 }
 // 舊的中文名字換成片假名（自己改過名字的不動）
-for (const [id, from, to] of [["lu", "陸沉", "レン"], ["xia", "夏陽", "ハル"]]) {
+for (const [id, from, to] of [["lu", "陸沉", "レイ"], ["lu", "レン", "レイ"], ["xia", "夏陽", "ハル"]]) {
   const p = settings.personas.find((x) => x.id === id && x.name === from);
   if (p) { p.name = to; p.system = p.system.replaceAll(from, to); save(STORE.settings, settings); }
 }
