@@ -27,7 +27,13 @@ const FONTS = {
     label: "悠哉（手寫可愛）",
     family: "Yozai",
     stack: '"Yozai", "PingFang TC", sans-serif',
-    css: "https://cdn.jsdelivr.net/npm/cn-fontsource-yozai/font.css", // 不在 Google Fonts 上，用 jsDelivr 的切片版（OFL 授權）
+    // 不在 Google Fonts 上，用 npm 套件的網頁切片版（OFL 授權）；依序試，哪個真的載得到字就用哪個
+    css: [
+      "https://cdn.jsdelivr.net/npm/cn-fontsource-yozai-bold/font.css",
+      "https://cdn.jsdelivr.net/npm/cn-fontsource-yozai/font.css",
+      "https://unpkg.com/cn-fontsource-yozai-bold/font.css",
+      "https://unpkg.com/cn-fontsource-yozai/font.css",
+    ],
   },
   huninn: { label: "粉圓（圓圓可愛）", family: "Huninn", stack: '"Huninn", "PingFang TC", sans-serif' },
   iansui: { label: "芫荽（手寫感）", family: "Iansui", stack: '"Iansui", "PingFang TC", sans-serif' },
@@ -169,22 +175,79 @@ const sendBtn = $("#send");
 
 // ---------- 外觀 ----------
 
+function setFontStack(stack) {
+  const root = document.documentElement.style;
+  root.setProperty("--serif", stack);
+  // 英文標題字照舊，裡面的中文跟著換
+  root.setProperty("--display", `"Playfair Display", ${stack}`);
+  root.setProperty("--caps", `"Cormorant Garamond", ${stack}`);
+}
+
+const fontState = {}; // key → "loading" | "ok" | "fail"
+function showFontState() {
+  const el = $("#s-font-state");
+  if (!el) return;
+  el.textContent = { loading: "載入中…", fail: "載不到這個字型，先用一般字顯示", ok: "" }[fontState[settings.font]] ?? "";
+}
+
+/** 載入一個字型 CSS，回傳它裡面 @font-face 用的名字（讀不到就回傳 null） */
+function loadFontCss(url) {
+  return new Promise((resolve) => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.crossOrigin = "anonymous";
+    link.href = url;
+    const done = (ok) => {
+      clearTimeout(timer);
+      if (!ok) { link.remove(); return resolve(null); }
+      const names = [];
+      const scan = (sheet) => {
+        try {
+          for (const r of sheet.cssRules) {
+            if (r instanceof CSSImportRule && r.styleSheet) scan(r.styleSheet);
+            else if (r instanceof CSSFontFaceRule) names.push(r.style.getPropertyValue("font-family").replace(/["']/g, "").trim());
+          }
+        } catch { /* 跨網域讀不到規則也沒關係 */ }
+      };
+      scan(link.sheet);
+      resolve({ link, family: names[0] || null });
+    };
+    const timer = setTimeout(() => done(false), 12000);
+    link.onload = () => done(true);
+    link.onerror = () => done(false);
+    document.head.append(link);
+  });
+}
+
+async function loadFont(key) {
+  const font = FONTS[key];
+  if (!font || font.family === "Noto Serif TC" || fontState[key] === "ok" || fontState[key] === "loading") return showFontState();
+  fontState[key] = "loading";
+  showFontState();
+  const urls = [font.css ?? `https://fonts.googleapis.com/css2?family=${encodeURIComponent(font.family)}&display=swap`].flat();
+  for (const url of urls) {
+    const r = await loadFontCss(url);
+    if (!r) continue;
+    const family = r.family || font.family;
+    let faces = [];
+    try { faces = await document.fonts.load(`16px "${family}"`, "悠哉可愛的字今天"); } catch {}
+    if (!faces.length) { r.link.remove(); continue; }
+    font.stack = `"${family}", ${font.stack.split(",").slice(1).join(",")}`;
+    fontState[key] = "ok";
+    if (settings.font === key) setFontStack(font.stack);
+    return showFontState();
+  }
+  fontState[key] = "fail";
+  showFontState();
+}
+
 function applyLook() {
   const root = document.documentElement.style;
   root.setProperty("--bg-blur", `${settings.blur}px`);
 
   const font = FONTS[settings.font] ?? FONTS.serif;
-  if (font.family !== "Noto Serif TC" && !document.querySelector(`link[data-font="${settings.font}"]`)) {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.dataset.font = settings.font;
-    link.href = font.css ?? `https://fonts.googleapis.com/css2?family=${encodeURIComponent(font.family)}&display=swap`;
-    document.head.append(link);
-  }
-  root.setProperty("--serif", font.stack);
-  // 英文標題字照舊，裡面的中文跟著換
-  root.setProperty("--display", `"Playfair Display", ${font.stack}`);
-  root.setProperty("--caps", `"Cormorant Garamond", ${font.stack}`);
+  setFontStack(font.stack);
+  loadFont(settings.font);
 
   const bg = load(STORE.bg, null);
   const photo = $("#photo");
@@ -965,6 +1028,7 @@ const fields = {
 function fillFields() {
   for (const [k, el] of Object.entries(fields)) el.type === "checkbox" ? (el.checked = settings[k]) : (el.value = settings[k]);
   showModel();
+  showFontState();
   $("#s-del-persona").hidden = settings.personas.length < 2;
 }
 $("#open-settings").onclick = () => {
