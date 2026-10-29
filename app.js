@@ -18,7 +18,7 @@ const priceOf = (model = "") => PRICES.find(([id]) => model.startsWith(id))?.[1]
 const DEFAULTS = {
   aiName: "Grey",
   title: "Grey",
-  subtitle: "觀測記錄",
+  subtitle: "夜間筆記",
   userName: "我",
   system:
     "你是 Grey，正在用通訊軟體跟對方聊天。\n" +
@@ -47,6 +47,7 @@ const save = (k, v) => {
 // 舊版預設是黑白、模糊、下雨；換風格後只有還沒自己調過的人改用新預設
 const stored = load(STORE.settings, {});
 if (!("injectTime" in stored)) { delete stored.blur; delete stored.gray; delete stored.rain; }
+if (stored.subtitle === "觀測記錄") delete stored.subtitle; // 舊版預設的副標題
 const settings = { ...DEFAULTS, ...stored };
 
 // 對話和貼圖可能有照片，localStorage 放不下，改存 IndexedDB

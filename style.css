@@ -3,20 +3,21 @@
   --display: "Playfair Display", "Noto Serif TC", serif;
   --caps: "Cormorant Garamond", "Noto Serif TC", serif;
 
-  /* 粉色紙張與印泥紅 */
-  --paper: #e3a1ad;
-  --paper-deep: #d48594;
-  --crimson: #b4365a;
-  --crimson-ink: #9c2c4c;
-  --ink: #3a2a2e;
-  --ink-soft: rgba(58, 42, 46, 0.62);
-  --card: #fbf7f4;
-  --card-pink: #f4e2e1;
-  --rule: rgba(58, 42, 46, 0.18);
+  /* 黑底、米白字、警示黃 */
+  --bg: #121211;
+  --surface: #1d1c1a;
+  --surface-2: #2a2925;
+  --text: #efe9dc;
+  --text-soft: rgba(239, 233, 220, 0.58);
+  --accent: #f2c230;
+  --on-accent: #141414;
+  --cream: #f1ebdd;
+  --rule: rgba(239, 233, 220, 0.16);
+  --hazard: repeating-linear-gradient(-45deg, var(--accent) 0 9px, var(--on-accent) 9px 18px);
 
-  /* 對話的螢光筆底色 */
-  --hl-ai: rgba(250, 236, 238, 0.9);
-  --hl-me: rgba(255, 255, 255, 0.94);
+  /* 對話的底色 */
+  --hl-ai: var(--surface-2);
+  --hl-me: var(--cream);
 
   --bg-blur: 0px;
   --bg-gray: 0;
@@ -28,8 +29,8 @@
 html, body {
   height: 100%;
   margin: 0;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--bg);
+  color: var(--text);
   font-family: var(--serif);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
@@ -51,10 +52,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
   overflow: hidden;
   z-index: 0;
   background:
-    radial-gradient(60% 40% at 20% 15%, rgba(255, 255, 255, 0.22), transparent 70%),
-    radial-gradient(50% 45% at 85% 70%, rgba(170, 60, 90, 0.18), transparent 70%),
-    radial-gradient(40% 30% at 30% 85%, rgba(255, 220, 225, 0.25), transparent 70%),
-    var(--paper);
+    radial-gradient(60% 40% at 15% 10%, rgba(242, 194, 48, 0.07), transparent 70%),
+    radial-gradient(50% 45% at 90% 75%, rgba(255, 255, 255, 0.04), transparent 70%),
+    var(--bg);
 }
 .backdrop > * { position: absolute; inset: 0; width: 100%; height: 100%; }
 .photo {
@@ -69,9 +69,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
 /* 紙張纖維的顆粒感，照片上也疊一層，讓整體像印刷品 */
 .grain {
   pointer-events: none;
-  opacity: 0.55;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.3 0 0 0 0 0.36 0 0 0 0.45 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.5;
+  mix-blend-mode: screen;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.88 0 0 0 0 0.8 0 0 0 0.22 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* ---------- 版面 ---------- */
@@ -94,11 +94,19 @@ button, input, textarea, select { font: inherit; color: inherit; }
   flex: none;
   display: flex;
   gap: 14px;
-  padding: 12px;
-  background: var(--card);
-  outline: 1px solid rgba(255, 255, 255, 0.9);
+  position: relative;
+  padding: 20px 12px 12px;
+  background: var(--surface);
+  outline: 1px solid var(--rule);
   outline-offset: -5px;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 10px 26px rgba(120, 40, 60, 0.16);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+}
+.log::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 8px;
+  background: var(--hazard);
 }
 
 .portrait { position: relative; width: 74px; flex: none; align-self: stretch; }
@@ -107,7 +115,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   inset: 0;
   background:
     radial-gradient(120% 70% at 50% 100%, rgba(255, 255, 255, 0.85), transparent 60%),
-    linear-gradient(180deg, #2a2326 0%, #6a5a5f 45%, #e9dfe1 100%);
+    linear-gradient(180deg, #0c0c0b 0%, #4a4740 50%, #d9d3c4 100%);
   background-size: cover;
   background-position: center;
 }
@@ -117,8 +125,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
   top: 50%;
   transform: translateY(-50%);
   padding: 6px 3px;
-  background: var(--crimson);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
   writing-mode: vertical-rl;
   font-family: var(--caps);
   font-weight: 600;
@@ -138,12 +146,12 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-size: 12px;
   letter-spacing: 0.34em;
   text-transform: uppercase;
-  color: var(--ink-soft);
+  color: var(--text-soft);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.status { font-size: 14px; color: var(--ink-soft); white-space: nowrap; }
+.status { font-size: 14px; color: var(--text-soft); white-space: nowrap; }
 .status.busy::after {
   content: "";
   display: inline-block;
@@ -157,13 +165,13 @@ button, input, textarea, select { font: inherit; color: inherit; }
   width: 36px; height: 36px;
   flex: none;
   display: grid; place-items: center;
-  background: var(--card);
-  border: 1.5px solid var(--ink);
-  box-shadow: 4px 4px 0 var(--crimson);
+  background: var(--surface);
+  border: 1.5px solid var(--text);
+  box-shadow: 4px 4px 0 var(--accent);
   cursor: pointer;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
-.menu-btn:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--crimson); }
+.menu-btn:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--accent); }
 
 .title-row { display: flex; align-items: flex-start; gap: 10px; }
 .weather {
@@ -175,7 +183,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   line-height: 1.1;
 }
 .weather b { font-family: var(--display); font-weight: 400; font-size: 24px; }
-.weather span { margin-top: 4px; font-size: 13px; color: var(--ink-soft); letter-spacing: 0.1em; }
+.weather span { margin-top: 4px; font-size: 13px; color: var(--text-soft); letter-spacing: 0.1em; }
 
 .log h1 {
   margin: 4px 0 0;
@@ -193,7 +201,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--rule);
   font-size: 15px;
   letter-spacing: 0.08em;
-  color: var(--ink-soft);
+  color: var(--text-soft);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -205,7 +213,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-weight: 600;
   font-size: 12px;
   letter-spacing: 0.3em;
-  color: var(--ink-soft);
+  color: var(--text-soft);
   margin-right: 8px;
 }
 .days button {
@@ -215,10 +223,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
   background: none;
   font-family: var(--display);
   font-size: 16px;
-  color: var(--ink-soft);
+  color: var(--text-soft);
   cursor: pointer;
 }
-.days button.today { background: var(--crimson); color: #fff; }
+.days button.today { background: var(--accent); color: var(--on-accent); }
 .days button:disabled { opacity: 0.35; cursor: default; }
 
 /* 右側的潮位計：上下文用了多少 */
@@ -227,8 +235,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
   width: 34px;
   flex: none;
   padding: 0;
-  border: 1.5px solid var(--ink);
-  background: var(--card);
+  border: 1.5px solid var(--text);
+  background: var(--surface);
   cursor: pointer;
   overflow: hidden;
 }
@@ -241,16 +249,16 @@ button, input, textarea, select { font: inherit; color: inherit; }
   letter-spacing: 0.08em;
   text-transform: uppercase;
   text-align: center;
-  color: var(--ink-soft);
+  color: var(--text-soft);
 }
 .tide-fill {
   position: absolute;
   left: 0; right: 0; bottom: 0;
   height: 0%;
-  background: rgba(180, 54, 90, 0.78);
+  background: var(--accent);
   transition: height 0.6s ease;
 }
-.tide-tick { position: absolute; right: 0; width: 9px; height: 1px; background: var(--ink); }
+.tide-tick { position: absolute; right: 0; width: 9px; height: 1px; background: var(--text); }
 .tide-num {
   position: absolute;
   top: 46%;
@@ -262,8 +270,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
   padding: 0 3px;
   font-size: 14px;
   text-align: center;
-  color: var(--ink);
-  background: var(--card);
+  color: var(--text);
+  background: var(--surface);
 }
 
 /* ---------- 對話 ---------- */
@@ -298,7 +306,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .hl code {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.86em;
-  color: var(--crimson-ink);
+  color: var(--accent);
 }
 .line.code {
   max-width: 100%;
@@ -320,7 +328,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-size: 12px;
   letter-spacing: 0.3em;
   text-transform: uppercase;
-  color: rgba(70, 40, 48, 0.62);
+  color: var(--text-soft);
 }
 
 /* 重要的一句（你的訊息、對方的問句）：白色方框加印泥紅的錯位陰影 */
@@ -328,18 +336,20 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .line.box .hl {
   display: inline-block;
   padding: 10px 18px;
-  background: #fffdfb;
-  border: 1.5px solid var(--ink);
-  box-shadow: 6px 6px 0 var(--crimson);
+  background: var(--cream);
+  color: var(--on-accent);
+  box-shadow: 6px 6px 0 var(--accent);
   text-align: left;
 }
+/* 對方的問句：整塊黃色 */
+.turn.ai .line.box .hl { background: var(--accent); box-shadow: 6px 6px 0 rgba(239, 233, 220, 0.82); }
 .time-tag {
   margin-top: -4px;
   padding: 2px 8px;
-  background: var(--card);
+  background: var(--accent);
   font-family: var(--display);
   font-size: 14px;
-  color: var(--crimson);
+  color: var(--on-accent);
 }
 
 /* 照片與貼圖：裱框 */
@@ -347,9 +357,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
   margin: 0;
   max-width: min(62%, 240px);
   padding: 8px;
-  background: #fffdfb;
-  border: 1.5px solid var(--ink);
-  box-shadow: 7px 7px 0 var(--crimson);
+  background: var(--cream);
+  box-shadow: 7px 7px 0 var(--accent);
   animation: rise 0.4s ease both;
 }
 .frame.sticker { max-width: min(46%, 170px); }
@@ -363,26 +372,26 @@ button, input, textarea, select { font: inherit; color: inherit; }
   max-width: 100%;
   padding: 7px 12px;
   border: 0;
-  background: var(--card);
+  background: var(--surface);
   font-size: 14px;
   letter-spacing: 0.04em;
-  color: var(--ink);
+  color: var(--text);
   text-align: left;
   cursor: pointer;
   animation: rise 0.4s ease both;
 }
-.musing .dia { flex: none; width: 9px; height: 9px; transform: rotate(45deg); border: 1.5px solid var(--crimson); background: rgba(180, 54, 90, 0.25); }
+.musing .dia { flex: none; width: 9px; height: 9px; transform: rotate(45deg); border: 1.5px solid var(--accent); background: rgba(242, 194, 48, 0.3); }
 .musing .gist { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.musing .at { flex: none; font-family: var(--display); font-size: 13px; color: var(--ink-soft); }
-.musing .caret { flex: none; font-size: 10px; color: var(--ink-soft); transition: transform 0.2s ease; }
+.musing .at { flex: none; font-family: var(--display); font-size: 13px; color: var(--text-soft); }
+.musing .caret { flex: none; font-size: 10px; color: var(--text-soft); transition: transform 0.2s ease; }
 .musing[aria-expanded="true"] .caret { transform: rotate(180deg); }
 .musing.live .gist { animation: breathe 1.4s ease-in-out infinite; }
 .musing-card {
   width: min(100%, 560px);
   margin-top: -6px;
   padding: 14px 18px;
-  background: rgba(255, 253, 251, 0.95);
-  border-left: 4px solid var(--crimson);
+  background: var(--surface);
+  border-left: 4px solid var(--accent);
   font-size: 15px;
   line-height: 1.95;
   letter-spacing: 0.03em;
@@ -397,11 +406,11 @@ button, input, textarea, select { font: inherit; color: inherit; }
   padding: 6px 14px;
   font-size: 13px;
   letter-spacing: 0.06em;
-  background: var(--card);
+  background: var(--surface);
   border: 1px solid var(--rule);
   text-align: center;
 }
-.notice.error { color: var(--crimson-ink); border-color: var(--crimson); }
+.notice.error { color: var(--accent); border-color: var(--accent); }
 
 /* ---------- 輸入列 ---------- */
 
@@ -411,10 +420,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
   align-items: flex-end;
   gap: 10px;
   padding: 8px 8px 8px 18px;
-  background: var(--card);
+  background: var(--surface);
   outline: 1px solid var(--rule);
   outline-offset: -5px;
-  box-shadow: 0 10px 26px rgba(120, 40, 60, 0.16);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
 }
 .composer textarea {
   flex: 1;
@@ -427,9 +436,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
   letter-spacing: 0.04em;
   padding: 10px 0;
   max-height: 140px;
-  color: var(--ink);
+  color: var(--text);
 }
-.composer textarea::placeholder { color: rgba(58, 42, 46, 0.42); }
+.composer textarea::placeholder { color: rgba(239, 233, 220, 0.38); }
 .send {
   flex: none;
   border: 0;
@@ -440,10 +449,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-size: 15px;
   letter-spacing: 0.32em;
   text-transform: uppercase;
-  color: var(--crimson);
+  color: var(--accent);
   cursor: pointer;
 }
-.send:disabled { color: rgba(58, 42, 46, 0.35); cursor: default; }
+.send:disabled { color: rgba(239, 233, 220, 0.3); cursor: default; }
 
 .toolbar {
   flex: none;
@@ -456,7 +465,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   display: grid; place-items: center;
   border: 0;
   background: none;
-  color: var(--ink);
+  color: var(--text);
   cursor: pointer;
 }
 .toolbar button:active { transform: scale(0.92); }
@@ -469,19 +478,20 @@ button, input, textarea, select { font: inherit; color: inherit; }
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--ink);
+  color: var(--text);
   overflow: visible;
 }
-.ticket-sheet::backdrop { background: rgba(80, 20, 40, 0.28); }
+.ticket-sheet::backdrop { background: rgba(0, 0, 0, 0.6); }
 .ticket {
   position: relative;
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
   padding: 20px 22px 22px;
-  background: var(--card-pink);
-  box-shadow: 0 20px 50px rgba(80, 20, 40, 0.3);
+  background: var(--surface);
+  outline: 1px solid var(--rule);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
 }
-.ticket-rule { height: 2px; background: var(--ink); opacity: 0.8; margin-bottom: 14px; }
+.ticket-rule { height: 8px; margin: -20px -22px 18px; background: var(--hazard); }
 .ticket-head {
   display: flex;
   align-items: flex-start;
@@ -490,7 +500,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--rule);
 }
 .ticket-head > div:first-child { flex: 1; }
-.ticket-title { font-family: var(--display); font-weight: 700; font-size: 28px; color: var(--crimson); line-height: 1.1; }
+.ticket-title { font-family: var(--display); font-weight: 700; font-size: 28px; color: var(--accent); line-height: 1.1; }
 .ticket-kicker {
   margin-top: 4px;
   font-family: var(--caps);
@@ -504,19 +514,19 @@ button, input, textarea, select { font: inherit; color: inherit; }
   border-left: 1px solid var(--rule);
   font-size: 12px;
   letter-spacing: 0.2em;
-  color: var(--ink-soft);
+  color: var(--text-soft);
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.ticket-meta b { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 16px; letter-spacing: 0.08em; color: var(--ink); }
+.ticket-meta b { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 16px; letter-spacing: 0.08em; color: var(--text); }
 .ticket-close {
   border: 0;
   background: none;
   font-size: 26px;
   line-height: 1;
   padding: 0 2px;
-  color: var(--ink-soft);
+  color: var(--text-soft);
   cursor: pointer;
 }
 
@@ -525,11 +535,11 @@ button, input, textarea, select { font: inherit; color: inherit; }
   margin: 16px 0 4px;
   font-size: 34px;
   font-weight: 700;
-  color: var(--crimson);
+  color: var(--accent);
   letter-spacing: 0.02em;
 }
-.ledger-big small { font-size: 15px; font-weight: 400; color: var(--ink-soft); margin-left: 8px; letter-spacing: 0.1em; }
-.ledger-note { font-size: 13px; color: var(--ink-soft); letter-spacing: 0.06em; }
+.ledger-big small { font-size: 15px; font-weight: 400; color: var(--text-soft); margin-left: 8px; letter-spacing: 0.1em; }
+.ledger-note { font-size: 13px; color: var(--text-soft); letter-spacing: 0.06em; }
 .ledger-table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 15px; }
 .ledger-table td { padding: 6px 0; }
 .ledger-table td:first-child { font-family: var(--caps); font-size: 16px; letter-spacing: 0.04em; }
@@ -547,19 +557,19 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-size: 11px;
   letter-spacing: 0.32em;
   text-transform: uppercase;
-  color: var(--ink-soft);
+  color: var(--text-soft);
 }
-.ledger-bar { height: 8px; background: rgba(58, 42, 46, 0.1); position: relative; }
-.ledger-bar i { position: absolute; inset: 0 auto 0 0; background: var(--crimson); }
-.ledger-row { display: flex; justify-content: space-between; font-size: 14px; margin-top: 6px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
-.ledger-inject { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; line-height: 1.7; color: var(--ink-soft); white-space: pre-wrap; }
+.ledger-bar { height: 8px; background: rgba(239, 233, 220, 0.1); position: relative; }
+.ledger-bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.ledger-row { display: flex; justify-content: space-between; font-size: 14px; margin-top: 6px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+.ledger-inject { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; line-height: 1.7; color: var(--text-soft); white-space: pre-wrap; }
 .ticket .postmark {
   position: absolute;
   right: -8px;
   top: -6px;
   width: 132px;
   height: 92px;
-  color: var(--crimson);
+  color: var(--accent);
   opacity: 0.75;
   pointer-events: none;
 }
@@ -575,20 +585,19 @@ button, input, textarea, select { font: inherit; color: inherit; }
   position: relative;
   margin: 0;
   padding: 6px;
-  background: #fffdfb;
-  border: 1px solid var(--rule);
+  background: var(--cream);
   cursor: pointer;
 }
 .sticker-grid img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
-.sticker-grid figcaption { margin-top: 4px; font-size: 12px; text-align: center; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sticker-grid figcaption { margin-top: 4px; font-size: 12px; text-align: center; color: #5a554a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sticker-grid .del {
   position: absolute;
   top: -8px; right: -8px;
   width: 24px; height: 24px;
   border: 0;
   border-radius: 50%;
-  background: var(--crimson);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
   font-size: 14px;
   line-height: 1;
   display: none;
@@ -598,10 +607,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
   display: grid;
   place-items: center;
   min-height: 112px;
-  border: 1.5px dashed var(--ink-soft);
+  border: 1.5px dashed var(--text-soft);
   background: transparent;
   font-size: 13px;
-  color: var(--ink-soft);
+  color: var(--text-soft);
   cursor: pointer;
 }
 .ticket-head .link { align-self: center; }
@@ -612,7 +621,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   margin: 0;
   border: 0;
   padding: 14px;
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(239, 233, 220, 0.04);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -625,22 +634,22 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-weight: 600;
   font-size: 13px;
   letter-spacing: 0.24em;
-  color: var(--crimson-ink);
+  color: var(--accent);
 }
-.settings label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--ink-soft); }
-.settings label.check { flex-direction: row; align-items: center; gap: 8px; font-size: 14px; color: var(--ink); }
+.settings label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--text-soft); }
+.settings label.check { flex-direction: row; align-items: center; gap: 8px; font-size: 14px; color: var(--text); }
 .settings input[type="text"], .settings input[type="password"], .settings textarea, .settings select {
   width: 100%;
   border: 1px solid var(--rule);
   border-radius: 0;
   padding: 8px 10px;
   font-size: 15px;
-  background: rgba(255, 255, 255, 0.85);
-  color: var(--ink);
+  background: var(--bg);
+  color: var(--text);
 }
 .settings textarea { resize: vertical; line-height: 1.6; }
-.settings input[type="checkbox"], .settings input[type="range"] { accent-color: var(--crimson); }
-.settings .hint { margin: 0; font-size: 12px; font-weight: 400; letter-spacing: 0.02em; color: var(--ink-soft); }
+.settings input[type="checkbox"], .settings input[type="range"] { accent-color: var(--accent); }
+.settings .hint { margin: 0; font-size: 12px; font-weight: 400; letter-spacing: 0.02em; color: var(--text-soft); }
 .settings legend .hint { margin-left: 6px; }
 .settings .row { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .settings .row > span { flex: 1; }
@@ -648,15 +657,15 @@ button, input, textarea, select { font: inherit; color: inherit; }
   display: inline-block;
   padding: 5px 12px;
   font-size: 13px;
-  color: #fff;
-  background: var(--ink);
+  color: var(--on-accent);
+  background: var(--accent);
   cursor: pointer;
 }
-.link { border: 0; background: none; padding: 5px 2px; font-size: 13px; color: var(--ink-soft); cursor: pointer; }
+.link { border: 0; background: none; padding: 5px 2px; font-size: 13px; color: var(--text-soft); cursor: pointer; }
 .actions { display: flex; justify-content: space-between; gap: 10px; }
 .actions button { border: 0; padding: 9px 20px; font-size: 14px; letter-spacing: 0.1em; cursor: pointer; }
-.actions .primary { background: var(--crimson); color: #fff; box-shadow: 3px 3px 0 var(--ink); }
-.actions .danger { background: transparent; color: var(--crimson-ink); text-decoration: underline; text-underline-offset: 4px; padding-left: 0; }
+.actions .primary { background: var(--accent); color: var(--on-accent); box-shadow: 3px 3px 0 var(--cream); }
+.actions .danger { background: transparent; color: var(--accent); text-decoration: underline; text-underline-offset: 4px; padding-left: 0; }
 
 @media (max-width: 520px) {
   .portrait { width: 62px; }
