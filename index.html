@@ -131,6 +131,7 @@
             <option value="max">max</option>
           </select>
         </label>
+        <label class="check"><input id="s-welcome" type="checkbox" /> 隔幾小時再打開時，讓對方先打招呼</label>
         <p class="hint">Key 只存在這個瀏覽器的 localStorage，直接從瀏覽器呼叫 API，請只在自己的裝置上使用。</p>
       </fieldset>
 
@@ -170,6 +171,16 @@
           <button type="button" class="link" id="s-bg-reset">還原</button>
         </div>
         <label>照片模糊 <input id="s-blur" type="range" min="0" max="30" step="1" /></label>
+      </fieldset>
+
+      <fieldset>
+        <h3 class="legend">備份</h3>
+        <p class="hint">資料只存在這支手機裡。匯出成一個檔案存到「檔案」或雲端，換手機、重裝時再匯入就能接回來。API Key 不會放進備份。</p>
+        <div class="row">
+          <button type="button" class="file-btn" id="s-export">匯出備份</button>
+          <label class="file-btn">從備份還原<input id="s-import" type="file" accept="application/json,.json" hidden /></label>
+          <span></span>
+        </div>
       </fieldset>
 
       <p class="hint version" id="s-version"></p>

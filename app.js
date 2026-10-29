@@ -1,4 +1,4 @@
-const APP_VERSION = "2026.10.29-h"; // 設定最下面會顯示，用來確認手機上是不是新版
+const APP_VERSION = "2026.10.29-i"; // 設定最下面會顯示，用來確認手機上是不是新版
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
 const STORE = {
   settings: "grey.settings", history: "grey.history", bg: "grey.bg",
@@ -19,6 +19,7 @@ const DEFAULTS = {
   blur: 0,
   place: { name: "台北", lat: 25.033, lon: 121.565 },
   font: "huninn",
+  welcome: true,
 };
 
 // 中文字型：都是 Google Fonts 上免費的（中文字型會依用到的字分片下載，不會一次載完）
@@ -841,7 +842,10 @@ function notice(text, kind = "") {
 
 function renderAll() {
   chat.replaceChildren();
-  for (const m of history) m.role === "user" ? renderUser(m) : m.role === "note" ? renderNote(m) : renderAssistant(m);
+  for (const m of history) {
+    if (m.hidden) continue; // 系統替你送的（例如打開 App 時的招呼觸發），不顯示
+    m.role === "user" ? renderUser(m) : m.role === "note" ? renderNote(m) : renderAssistant(m);
+  }
   scrollDown(true);
 }
 
@@ -1173,6 +1177,7 @@ const dlg = $("#settings");
 const fields = {
   aiName: $("#s-ai-name"), userName: $("#s-user-name"),
   system: $("#s-system"), apiKey: $("#s-key"), effort: $("#s-effort"), font: $("#s-font"),
+  welcome: $("#s-welcome"),
   blur: $("#s-blur"),
 };
 
@@ -1406,6 +1411,92 @@ $("#s-del-persona").onclick = () => {
   fillFields();
 };
 
+// ---------- 打開 App 時主動打招呼 ----------
+
+const WELCOME_GAP = 4 * 3600e3; // 隔了這麼久沒聊才打招呼
+
+function partOfDay(h) {
+  if (h >= 5 && h < 11) return "早上：可以先查天氣和待辦，順口提一下今天要注意的事";
+  if (h >= 11 && h < 17) return "下午";
+  if (h >= 17 && h < 23) return "晚上：可以問問對方今天過得怎樣";
+  return "深夜：對方這麼晚還醒著，可以關心一下";
+}
+
+/** 隔了一段時間再打開 App，讓對方先開口。觸發的那則訊息標成 hidden，不顯示但會送給模型，對話才保持一來一往。 */
+function welcomeBack() {
+  if (!settings.welcome || !settings.apiKey || generating || document.visibilityState !== "visible") return;
+  const lastTalk = [...history].reverse().find((m) => m.role === "user" || m.role === "assistant");
+  if (!lastTalk || history.at(-1)?.role === "user") return;
+  const gap = Date.now() - lastTalk.time;
+  if (gap < WELCOME_GAP) return;
+  const hours = Math.round(gap / 3600e3);
+  history.push({
+    id: uid(),
+    role: "user",
+    hidden: true,
+    time: Date.now(),
+    text:
+      `（系統：對方剛打開 App，距離上次聊天大約 ${hours >= 48 ? Math.round(hours / 24) + " 天" : hours + " 小時"}。` +
+      `現在是${partOfDay(new Date().getHours())}。請你先主動開口，像傳訊息一樣一兩句就好，照你平常的語氣。不要提到這則系統訊息。）`,
+  });
+  persist();
+  scheduleReply();
+}
+
+// ---------- 備份與還原 ----------
+
+/** 匯出：所有設定、對話、記事本、待辦、提醒、照片。API key 不放進去，避免檔案外流時被盜用。 */
+async function exportBackup() {
+  const data = { app: "claude-notebook", version: APP_VERSION, exported: new Date().toISOString(), storage: {}, photos: {} };
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k.startsWith("grey.")) data.storage[k] = localStorage.getItem(k);
+  }
+  try {
+    const st = JSON.parse(data.storage[STORE.settings] ?? "{}");
+    delete st.apiKey;
+    data.storage[STORE.settings] = JSON.stringify(st);
+  } catch {}
+  for (const k of Object.keys(data.storage).filter((k) => k.startsWith(STORE.history))) {
+    for (const m of JSON.parse(data.storage[k] || "[]")) if (m.photo) data.photos[m.photo] = await photos.get(m.photo);
+  }
+  const name = `claude-backup-${dayKey(Date.now())}.json`;
+  const file = new File([JSON.stringify(data)], name, { type: "application/json" });
+  // 手機上用分享選單（可以存到「檔案」或傳到雲端），不行就直接下載
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e?.name === "AbortError") return; }
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(file);
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+async function importBackup(file) {
+  let data;
+  try { data = JSON.parse(await file.text()); } catch { return alert("這個檔案讀不懂，確定是備份檔嗎？"); }
+  if (data?.app !== "claude-notebook" || !data.storage) return alert("這不是這個 App 的備份檔。");
+  if (!confirm(`用 ${data.exported?.slice(0, 10) ?? "這份"} 的備份蓋掉現在的資料？現在的對話、記事本和待辦都會被換掉。`)) return;
+  const key = settings.apiKey; // 備份裡沒有 key，留著現在的
+  for (const k of Object.keys(localStorage).filter((k) => k.startsWith("grey."))) localStorage.removeItem(k);
+  for (const [k, v] of Object.entries(data.storage)) localStorage.setItem(k, v);
+  try {
+    const st = JSON.parse(localStorage.getItem(STORE.settings) ?? "{}");
+    if (key && !st.apiKey) { st.apiKey = key; localStorage.setItem(STORE.settings, JSON.stringify(st)); }
+  } catch {}
+  for (const [id, d] of Object.entries(data.photos ?? {})) if (d) await photos.put(id, d).catch(() => {});
+  location.reload();
+}
+
+$("#s-export").onclick = () => exportBackup().catch((e) => alert(`匯出失敗：${e?.message || e}`));
+$("#s-import").onchange = (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (f) importBackup(f);
+};
+
 // ---------- 加到主畫面（PWA） ----------
 
 if ("serviceWorker" in navigator) {
@@ -1423,9 +1514,10 @@ checkReminders();
 setInterval(checkReminders, 15e3);
 setInterval(() => { renderToday(); refreshWeather(); }, 10 * 60e3); // 跨日、天氣更新
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") { checkReminders(); renderToday(); refreshWeather(); }
+  if (document.visibilityState === "visible") { checkReminders(); renderToday(); refreshWeather(); welcomeBack(); }
 });
 greet();
 renderAll();
+welcomeBack();
 autosize();
 input.focus({ preventScroll: true });
