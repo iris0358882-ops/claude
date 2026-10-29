@@ -416,6 +416,40 @@ button, input, textarea, select { font: inherit; color: inherit; }
   transition: transform 0.12s ease, box-shadow 0.12s ease;
   box-shadow: 2px 2px 0 var(--crimson);
 }
+/* 換角色：外觀跟快捷按鈕一樣，點下去是手機原生的選單 */
+.quick .who {
+  flex: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--crimson);
+  border: 1px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+.quick .who select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  padding: 6px 28px 6px 12px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  outline: 0;
+}
+.quick .who::after {
+  content: "▾";
+  position: absolute;
+  right: 10px;
+  color: #fff;
+  font-size: 11px;
+  pointer-events: none;
+}
+.quick .who option { color: var(--ink); }
+.settings .persona-actions { justify-content: space-between; }
+.settings .persona-actions .link { color: var(--crimson-ink); }
 .quick button:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--crimson); }
 
 /* ---------- 輸入列 ---------- */

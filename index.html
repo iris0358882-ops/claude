@@ -59,6 +59,7 @@
     <main id="chat" class="chat" aria-live="polite"></main>
 
     <div class="quick" id="quick" aria-label="快捷">
+      <label class="who" title="換角色"><select id="who" aria-label="聊天對象"></select></label>
       <button type="button" data-say="今天有什麼要做的？">今天要做什麼</button>
       <button type="button" data-say="今天跟明天天氣怎樣？要帶傘嗎？">天氣</button>
       <button type="button" data-fill="幫我記一下：">記一件事</button>
@@ -85,7 +86,12 @@
       </div>
 
       <fieldset>
-        <h3 class="legend">對方</h3>
+        <h3 class="legend">對方 <span class="hint">每個角色的對話分開存，待辦和提醒共用</span></h3>
+        <label>角色 <select id="s-persona"></select></label>
+        <div class="row persona-actions">
+          <button type="button" class="link" id="s-new-persona">＋ 新角色</button>
+          <button type="button" class="link" id="s-del-persona">刪除這個角色</button>
+        </div>
         <label>名字 <input id="s-ai-name" type="text" maxlength="24" /></label>
         <label>人設（system prompt）<textarea id="s-system" rows="5"></textarea></label>
       </fieldset>

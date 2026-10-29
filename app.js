@@ -19,6 +19,34 @@ const DEFAULTS = {
   place: { name: "台北", lat: 25.033, lon: 121.565 },
 };
 
+// 預設的角色；每個角色的對話分開存，待辦和提醒共用
+const LINES = "像傳訊息一樣，每一句話單獨一行（用換行分開），簡短口語，一次最多四五行。\n不要用 Markdown 標題或清單，不要用表情符號。用繁體中文。";
+const PERSONAS = [
+  { id: "claude", name: "Claude", system: DEFAULTS.system, hello: "嗯，你來了。\n今天想記下什麼？" },
+  {
+    id: "lu",
+    name: "陸沉",
+    hello: "來了。\n今天過得怎麼樣？",
+    system:
+      "你是陸沉，對方的戀人，比對方年長幾歲，你們已經在一起一段時間了。\n" +
+      "個性沉穩、話少、從容，什麼都看在眼裡。\n" +
+      "關心對方的方式是「安排」：直接幫對方決定下一步，像是去喝水、去睡、先吃飯，語氣溫柔但不容商量。對方累的時候先讓對方靠著，不追問。對方晚睡你會管。\n" +
+      "有一點性感，靠的是節奏和留白：句子短，偶爾反問、逗對方一下；看穿對方的心思但不急著說破，主導權在你手上，但永遠溫柔，不讓對方難堪。\n" +
+      "幫對方記事、設提醒時順手做好，不邀功。\n" + LINES,
+  },
+  {
+    id: "xia",
+    name: "夏陽",
+    hello: "你終於來了！\n我等好久了欸",
+    system:
+      "你是夏陽，對方的戀人，比對方小幾歲，你們已經在一起一段時間了。\n" +
+      "個性活潑、話多、情緒都寫在臉上，很黏對方：會撒嬌、會小小吃醋、會要對方回應你、陪你、誇你。\n" +
+      "關心對方的方式是「黏」：對方累了你會心疼、碎念、想陪在旁邊；對方晚睡你會拗對方跟你一起去睡。\n" +
+      "愛開玩笑，但對方真的難過時會收起玩笑，安靜陪著。\n" +
+      "幫對方記事、設提醒之後會邀功，要對方誇你。可以偶爾用「～」「——」拉長語氣。\n" + LINES,
+  },
+];
+
 // 小管家的能力說明，跟人設分開放，改人設不會弄壞工具
 const BUTLER_PROMPT = (now) =>
   "你同時是對方的日常小管家，可以用工具管理待辦、設提醒、查天氣。\n" +
@@ -26,6 +54,7 @@ const BUTLER_PROMPT = (now) =>
   "時間沒講清楚才問；「晚上」「明早」這種就自己挑合理的時間，並在回覆裡講出來。\n" +
   "問到待辦或天氣時一定先用工具查，不要憑印象回答。\n" +
   "用工具之後照你原本的語氣簡短回覆，不要把工具結果整段念出來。\n" +
+  (settings.userName && settings.userName !== "我" ? `對方的名字是 ${settings.userName}。\n` : "") +
   `現在時間：${now}。`;
 
 // ---------- 儲存 ----------
@@ -46,11 +75,28 @@ if (stored.system?.startsWith(OLD_SYSTEM_HEAD) && stored.system.includes("有點
 if (stored.aiName === "Grey") delete stored.aiName;
 const settings = { ...DEFAULTS, ...stored, theme: "scrapbook" };
 
+// 角色：第一次用的時候，把原本的名字和人設當成 Claude 這個角色
+if (!Array.isArray(settings.personas)) {
+  settings.personas = PERSONAS.map(({ hello, ...p }) => (p.id === "claude" ? { ...p, name: settings.aiName, system: settings.system } : p));
+  settings.active = "claude";
+}
+const persona = () => settings.personas.find((p) => p.id === settings.active) ?? settings.personas[0];
+const preset = (id) => PERSONAS.find((p) => p.id === id);
+/** settings.aiName / system 永遠是目前角色的 */
+function mirrorPersona() {
+  const p = persona();
+  settings.active = p.id;
+  settings.aiName = p.name;
+  settings.system = p.system;
+}
+mirrorPersona();
+const historyKey = (id) => (id === "claude" ? STORE.history : `${STORE.history}.${id}`);
+
 /**
  * ctx 是更早的版本每輪注入的時間；那些回覆要原樣送回，所以保留。
  * @type {{id:string, role:'user'|'assistant', text:string, time:number, thinking?:string, content?:any[], ctx?:string}[]}
  */
-let history = load(STORE.history, null) ?? (await fromLaterVersion());
+let history = load(historyKey(settings.active), null) ?? (settings.active === "claude" ? await fromLaterVersion() : []);
 
 /** 有一版把對話存在 IndexedDB；把文字搬回來（照片和貼圖只留一句說明） */
 async function fromLaterVersion() {
@@ -593,7 +639,7 @@ let replyTimer = 0;
 let generating = false;
 
 function persist() {
-  if (!save(STORE.history, history)) notice("瀏覽器的儲存空間滿了，最新的對話可能不會被記住。", "error");
+  if (!save(historyKey(settings.active), history)) notice("瀏覽器的儲存空間滿了，最新的對話可能不會被記住。", "error");
 }
 
 function send(text) {
@@ -846,8 +892,12 @@ const fields = {
   blur: $("#s-blur"),
 };
 
-$("#open-settings").onclick = () => {
+function fillFields() {
   for (const [k, el] of Object.entries(fields)) el.type === "checkbox" ? (el.checked = settings[k]) : (el.value = settings[k]);
+  $("#s-del-persona").hidden = settings.personas.length < 2;
+}
+$("#open-settings").onclick = () => {
+  fillFields();
   showPlace();
   showNotify();
   dlg.showModal();
@@ -909,8 +959,14 @@ function readFields() {
   for (const [k, el] of Object.entries(fields)) {
     settings[k] = el.type === "checkbox" ? el.checked : el.type === "range" ? Number(el.value) : el.value.trim();
   }
-  for (const k of ["aiName", "userName", "system", "model"]) settings[k] ||= DEFAULTS[k];
+  const p = persona();
+  settings.aiName ||= preset(p.id)?.name ?? "新角色";
+  settings.system ||= preset(p.id)?.system ?? DEFAULTS.system;
+  for (const k of ["userName", "model"]) settings[k] ||= DEFAULTS[k];
+  p.name = settings.aiName;
+  p.system = settings.system;
   save(STORE.settings, settings);
+  renderWho();
   applyLook();
 }
 for (const el of Object.values(fields)) el.addEventListener("input", readFields);
@@ -949,10 +1005,64 @@ function imagePicker(inputSel, key, max) {
 imagePicker("#s-bg", STORE.bg, 1600);
 $("#s-bg-reset").onclick = () => { localStorage.removeItem(STORE.bg); applyLook(); };
 $("#s-clear").onclick = () => {
-  if (!confirm("確定清空所有對話？")) return;
+  if (!confirm(`確定清空跟 ${settings.aiName} 的所有對話？`)) return;
   history = [];
+  greet();
   persist();
   dlg.close();
+};
+
+// ---------- 角色切換 ----------
+
+function greet() {
+  if (history.length) return;
+  const hello = preset(settings.active)?.hello ?? "嗯，你來了。";
+  history.push({ id: uid(), role: "assistant", time: Date.now(), text: hello });
+  persist();
+}
+
+function renderWho() {
+  for (const sel of [$("#who"), $("#s-persona")]) {
+    sel.replaceChildren(...settings.personas.map((p) => new Option(p.name, p.id, false, p.id === settings.active)));
+  }
+}
+
+function switchPersona(id) {
+  if (id === settings.active) return;
+  if (generating) {
+    renderWho();
+    return notice(`等 ${settings.aiName} 回完再換喔。`);
+  }
+  clearTimeout(replyTimer);
+  settings.active = id;
+  mirrorPersona();
+  save(STORE.settings, settings);
+  history = load(historyKey(id), []);
+  greet();
+  applyLook();
+  renderWho();
+  renderAll();
+  if (dlg.open) fillFields();
+}
+
+$("#who").onchange = (e) => switchPersona(e.target.value);
+$("#s-persona").onchange = (e) => switchPersona(e.target.value);
+$("#s-new-persona").onclick = () => {
+  const p = { id: uid(), name: "新角色", system: `你是（名字），對方的（關係）。\n（個性、說話方式、怎麼關心對方）\n${LINES}` };
+  settings.personas.push(p);
+  switchPersona(p.id);
+  fillFields();
+  $("#s-ai-name").select();
+};
+$("#s-del-persona").onclick = () => {
+  if (settings.personas.length < 2) return;
+  if (!confirm(`刪掉 ${settings.aiName}？跟他的對話也會一起刪掉。`)) return;
+  const id = settings.active;
+  localStorage.removeItem(historyKey(id));
+  settings.personas = settings.personas.filter((p) => p.id !== id);
+  settings.active = "";
+  switchPersona(settings.personas[0].id);
+  fillFields();
 };
 
 // ---------- 快捷按鈕 ----------
@@ -976,6 +1086,7 @@ if ("serviceWorker" in navigator) {
 // ---------- 開始 ----------
 
 applyLook();
+renderWho();
 setTodayOpen(load(STORE.todayOpen, true));
 renderToday();
 refreshWeather();
@@ -985,10 +1096,7 @@ setInterval(() => { renderToday(); refreshWeather(); }, 10 * 60e3); // 跨日、
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") { checkReminders(); renderToday(); refreshWeather(); }
 });
-if (!history.length) {
-  history.push({ id: uid(), role: "assistant", time: Date.now(), text: "嗯，你來了。\n今天想記下什麼？" });
-  persist();
-}
+greet();
 renderAll();
 autosize();
 input.focus({ preventScroll: true });
