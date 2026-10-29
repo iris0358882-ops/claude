@@ -18,11 +18,6 @@
     <div class="grain"></div>
   </div>
 
-  <!-- 郵戳上的環狀文字共用這條路徑 -->
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <defs><path id="stamp-arc" d="M50,50 m-36,0 a36,36 0 1,1 72,0 a36,36 0 1,1 -72,0" /></defs>
-  </svg>
-
   <div class="app">
     <header class="log">
       <div class="portrait">
@@ -38,7 +33,10 @@
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg>
           </button>
         </div>
-        <h1 id="title">Grey</h1>
+        <div class="title-row">
+          <h1 id="title">Grey</h1>
+          <div class="weather" id="weather" hidden><b id="w-temp"></b><span id="w-desc"></span></div>
+        </div>
         <div class="sub"><span id="subtitle">觀測記錄</span><i>observe · record · keep</i></div>
         <nav class="days" id="days" aria-label="日期"></nav>
       </div>
@@ -58,6 +56,16 @@
       <textarea id="input" rows="1" placeholder="給 Grey 發消息…" enterkeyhint="send"></textarea>
       <button type="submit" class="send" id="send" disabled>Send</button>
     </form>
+
+    <nav class="toolbar" aria-label="附件">
+      <button type="button" id="pick-photo" aria-label="傳照片">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="1.5"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="m4 17 5-5 4 4 2.5-2.5L20 18"/></svg>
+      </button>
+      <button type="button" id="open-stickers" aria-label="貼圖">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M20 12.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6.5"/><path d="M20 12.5 12.5 20c0-4.1 3.4-7.5 7.5-7.5Z"/><path d="M9 10h.01M15 10h.01M9 14.5c1.5 1.3 4 1.3 5.5 0" stroke-linecap="round"/></svg>
+      </button>
+      <input id="photo-input" type="file" accept="image/*" hidden />
+    </nav>
   </div>
 
   <!-- 帳本：本輪用量、花費、上下文、注入內容 -->
@@ -76,6 +84,24 @@
         <button class="ticket-close" id="ledger-close" aria-label="關閉">×</button>
       </div>
       <div id="ledger-body" class="ticket-body"></div>
+    </div>
+  </dialog>
+
+  <!-- 貼圖 -->
+  <dialog id="stickers" class="ticket-sheet">
+    <div class="ticket">
+      <div class="ticket-rule"></div>
+      <div class="ticket-head">
+        <div>
+          <div class="ticket-title">Stickers</div>
+          <div class="ticket-kicker">Collected</div>
+        </div>
+        <button type="button" class="link" id="stickers-manage">管理</button>
+        <button class="ticket-close" id="stickers-close" aria-label="關閉">×</button>
+      </div>
+      <p class="ledger-note">點一下傳給對方。對方也能從這裡挑貼圖回你，所以名字取得好認一點，例如「偷看」「生氣」。</p>
+      <div class="sticker-grid" id="sticker-grid"></div>
+      <input id="sticker-input" type="file" accept="image/*" multiple hidden />
     </div>
   </dialog>
 
@@ -107,6 +133,7 @@
         <label>大標題 <input id="s-title" type="text" maxlength="24" /></label>
         <label>副標題 <input id="s-subtitle" type="text" maxlength="24" /></label>
         <label>我的名字 <input id="s-user-name" type="text" maxlength="24" /></label>
+        <label>天氣城市（留空就不顯示；找不到的話用英文）<input id="s-city" type="text" maxlength="40" placeholder="例如：台北、東京、London" /></label>
       </fieldset>
 
       <fieldset>
@@ -122,7 +149,7 @@
             <option value="max">max</option>
           </select>
         </label>
-        <label class="check"><input id="s-inject-time" type="checkbox" /> 每輪告訴對方現在幾點</label>
+        <label class="check"><input id="s-inject-time" type="checkbox" /> 每輪告訴對方現在幾點和天氣</label>
         <p class="hint">Key 只存在這個瀏覽器的 localStorage，直接從瀏覽器呼叫 API，請只在自己的裝置上使用。</p>
       </fieldset>
 

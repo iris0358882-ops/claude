@@ -165,6 +165,18 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .menu-btn:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--crimson); }
 
+.title-row { display: flex; align-items: flex-start; gap: 10px; }
+.weather {
+  margin: 6px 2px 0 auto;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.1;
+}
+.weather b { font-family: var(--display); font-weight: 400; font-size: 24px; }
+.weather span { margin-top: 4px; font-size: 13px; color: var(--ink-soft); letter-spacing: 0.1em; }
+
 .log h1 {
   margin: 4px 0 0;
   font-size: 24px;
@@ -311,71 +323,72 @@ button, input, textarea, select { font: inherit; color: inherit; }
   color: rgba(70, 40, 48, 0.62);
 }
 
-/* 這一輪的思考：封緘的卡片，揭開才看得到 */
-.sealed {
-  position: relative;
-  width: min(100%, 520px);
-  padding: 6px;
+/* 重要的一句（你的訊息、對方的問句）：白色方框加印泥紅的錯位陰影 */
+.line.box { max-width: 86%; animation: rise 0.4s ease both; }
+.line.box .hl {
+  display: inline-block;
+  padding: 10px 18px;
+  background: #fffdfb;
+  border: 1.5px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--crimson);
+  text-align: left;
+}
+.time-tag {
+  margin-top: -4px;
+  padding: 2px 8px;
   background: var(--card);
-  box-shadow: 0 10px 24px rgba(120, 40, 60, 0.14);
+  font-family: var(--display);
+  font-size: 14px;
+  color: var(--crimson);
+}
+
+/* 照片與貼圖：裱框 */
+.frame {
+  margin: 0;
+  max-width: min(62%, 240px);
+  padding: 8px;
+  background: #fffdfb;
+  border: 1.5px solid var(--ink);
+  box-shadow: 7px 7px 0 var(--crimson);
   animation: rise 0.4s ease both;
 }
-.sealed-inner { border: 1.5px solid var(--ink); padding: 14px 18px 16px; position: relative; overflow: hidden; }
-.sealed-head {
+.frame.sticker { max-width: min(46%, 170px); }
+.frame img { display: block; width: 100%; height: auto; }
+
+/* 一行式思考摘要，點開才展開 */
+.musing {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
   gap: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--rule);
-  font-family: var(--caps);
-  font-weight: 600;
-  font-size: 11px;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-}
-.sealed-title { margin: 12px 0 2px; font-size: 17px; letter-spacing: 0.06em; }
-.sealed-title b { color: var(--crimson); font-weight: 700; }
-.sealed-open {
+  max-width: 100%;
+  padding: 7px 12px;
   border: 0;
-  background: none;
-  padding: 0;
-  font-size: 15px;
-  color: var(--crimson);
-  text-decoration: underline dashed;
-  text-underline-offset: 4px;
-  cursor: pointer;
-}
-.sealed-text {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--rule);
+  background: var(--card);
   font-size: 14px;
-  line-height: 1.85;
-  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  animation: rise 0.4s ease both;
+}
+.musing .dia { flex: none; width: 9px; height: 9px; transform: rotate(45deg); border: 1.5px solid var(--crimson); background: rgba(180, 54, 90, 0.25); }
+.musing .gist { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.musing .at { flex: none; font-family: var(--display); font-size: 13px; color: var(--ink-soft); }
+.musing .caret { flex: none; font-size: 10px; color: var(--ink-soft); transition: transform 0.2s ease; }
+.musing[aria-expanded="true"] .caret { transform: rotate(180deg); }
+.musing.live .gist { animation: breathe 1.4s ease-in-out infinite; }
+.musing-card {
+  width: min(100%, 560px);
+  margin-top: -6px;
+  padding: 14px 18px;
+  background: rgba(255, 253, 251, 0.95);
+  border-left: 4px solid var(--crimson);
+  font-size: 15px;
+  line-height: 1.95;
+  letter-spacing: 0.03em;
   white-space: pre-wrap;
-  max-height: 260px;
+  max-height: 320px;
   overflow-y: auto;
-  position: relative;
-  z-index: 1;
-}
-.sealed .stamp {
-  position: absolute;
-  right: -6px;
-  top: 34px;
-  width: 104px;
-  height: 104px;
-  color: var(--crimson);
-  opacity: 0.8;
-  transform: rotate(-14deg);
-  pointer-events: none;
-}
-.sealed.live .stamp { display: none; }
-.sealed.done .stamp { animation: stamp 0.45s cubic-bezier(0.3, 1.4, 0.5, 1) both; }
-.sealed.live .sealed-title b { animation: breathe 1.4s ease-in-out infinite; }
-@keyframes stamp {
-  from { opacity: 0; transform: rotate(-14deg) scale(1.6); }
-  to { opacity: 0.8; transform: rotate(-14deg) scale(1); }
 }
 
 .notice {
@@ -432,7 +445,23 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .send:disabled { color: rgba(58, 42, 46, 0.35); cursor: default; }
 
-/* ---------- 票券樣式的面板（帳本、設定） ---------- */
+.toolbar {
+  flex: none;
+  display: flex;
+  justify-content: space-around;
+  padding: 10px 0 0;
+}
+.toolbar button {
+  width: 48px; height: 44px;
+  display: grid; place-items: center;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+}
+.toolbar button:active { transform: scale(0.92); }
+
+/* ---------- 票券樣式的面板（帳本、貼圖、設定） ---------- */
 
 .ticket-sheet {
   width: min(560px, calc(100vw - 24px));
@@ -535,6 +564,48 @@ button, input, textarea, select { font: inherit; color: inherit; }
   pointer-events: none;
 }
 
+/* 貼圖抽屜 */
+.sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.sticker-grid figure {
+  position: relative;
+  margin: 0;
+  padding: 6px;
+  background: #fffdfb;
+  border: 1px solid var(--rule);
+  cursor: pointer;
+}
+.sticker-grid img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
+.sticker-grid figcaption { margin-top: 4px; font-size: 12px; text-align: center; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sticker-grid .del {
+  position: absolute;
+  top: -8px; right: -8px;
+  width: 24px; height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--crimson);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  display: none;
+}
+.sticker-grid.manage .del { display: block; }
+.sticker-grid .add {
+  display: grid;
+  place-items: center;
+  min-height: 112px;
+  border: 1.5px dashed var(--ink-soft);
+  background: transparent;
+  font-size: 13px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.ticket-head .link { align-self: center; }
+
 /* 設定 */
 .settings { display: flex; flex-direction: column; gap: 14px; }
 .settings fieldset {
@@ -599,5 +670,5 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .line, .sealed, .sealed.done .stamp { animation: none; }
+  .line, .line.box, .frame, .musing { animation: none; }
 }

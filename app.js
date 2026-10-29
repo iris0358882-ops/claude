@@ -29,6 +29,7 @@ const DEFAULTS = {
   model: "claude-opus-5-5",
   effort: "low",
   injectTime: true,
+  city: "",
   blur: 0,
   gray: false,
   rain: false,
@@ -48,11 +49,40 @@ const stored = load(STORE.settings, {});
 if (!("injectTime" in stored)) { delete stored.blur; delete stored.gray; delete stored.rain; }
 const settings = { ...DEFAULTS, ...stored };
 
+// 對話和貼圖可能有照片，localStorage 放不下，改存 IndexedDB
+const idb = new Promise((resolve, reject) => {
+  const req = indexedDB.open("grey", 1);
+  req.onupgradeneeded = () => req.result.createObjectStore("kv");
+  req.onsuccess = () => resolve(req.result);
+  req.onerror = () => reject(req.error);
+});
+const idbGet = async (k) => {
+  const db = await idb;
+  return new Promise((resolve, reject) => {
+    const req = db.transaction("kv").objectStore("kv").get(k);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+};
+const idbSet = async (k, v) => {
+  const db = await idb;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("kv", "readwrite");
+    tx.objectStore("kv").put(v, k);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+const idbLoad = (k) => idbGet(k).catch(() => undefined);
+
 /**
- * @type {{id:string, role:'user'|'assistant', text:string, time:number,
- *   thinking?:string, content?:any[], ctx?:string, usage?:object, model?:string, secs?:number}[]}
+ * 使用者的一則：text、image（data URL）或 sticker（{name, src}）其中之一。
+ * @type {{id:string, role:'user'|'assistant', text?:string, image?:string, sticker?:{name:string, src:string},
+ *   time:number, thinking?:string, content?:any[], ctx?:string, usage?:object, model?:string, secs?:number}[]}
  */
-let history = load(STORE.history, []);
+let history = (await idbLoad("history")) ?? load(STORE.history, []);
+/** @type {{id:string, name:string, src:string}[]} */
+let stickers = (await idbLoad("stickers")) ?? [];
 
 const $ = (s) => document.querySelector(s);
 const chat = $("#chat");
@@ -82,6 +112,45 @@ function applyLook() {
   $("#subtitle").textContent = settings.subtitle;
   input.placeholder = `給 ${settings.aiName} 發消息…`;
   document.title = settings.title;
+  renderWeather();
+}
+
+// ---------- 天氣（Open-Meteo，免金鑰） ----------
+
+let weather = null; // { city, temp, desc }
+let geo = null; // { query, lat, lon, name }
+
+const WEATHER_CODES = [
+  [0, "晴"], [1, "晴時多雲"], [2, "多雲"], [3, "陰"], [48, "霧"], [57, "毛毛雨"], [65, "雨"],
+  [67, "凍雨"], [77, "雪"], [82, "陣雨"], [86, "陣雪"], [99, "雷雨"],
+];
+const weatherText = (code) => WEATHER_CODES.find(([max]) => code <= max)?.[1] ?? "";
+
+async function refreshWeather() {
+  const city = settings.city.trim();
+  if (!city) { weather = null; return renderWeather(); }
+  try {
+    if (geo?.query !== city) {
+      const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&language=zh&format=json&name=${encodeURIComponent(city)}`);
+      const hit = (await r.json()).results?.[0];
+      if (!hit) throw new Error("找不到城市");
+      geo = { query: city, lat: hit.latitude, lon: hit.longitude, name: hit.name };
+    }
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&current=temperature_2m,weather_code`);
+    const cur = (await r.json()).current;
+    weather = { city: geo.name, temp: Math.round(cur.temperature_2m), desc: weatherText(cur.weather_code) };
+  } catch {
+    weather = null;
+  }
+  renderWeather();
+}
+
+function renderWeather() {
+  $("#weather").hidden = !weather;
+  if (!weather) return;
+  $("#w-temp").textContent = `${weather.temp}°`;
+  $("#w-desc").textContent = weather.desc;
+  $("#weather").title = weather.city;
 }
 
 // ---------- 小工具 ----------
@@ -116,24 +185,36 @@ function toLines(text) {
   return out;
 }
 
-function lineEl(b) {
-  const p = document.createElement("p");
-  if (b.code != null) {
-    p.className = "line code";
-    p.textContent = b.code;
-  } else {
-    p.className = "line";
-    p.innerHTML = `<span class="hl">${inline(b.text)}</span>`;
-  }
-  return p;
+const STICKER_LINE = /^\[貼圖[:：]\s*(.+?)\s*\]$/;
+const isQuestion = (t) => /[?？]$/.test(t);
+
+function frameEl(src, kind, alt = "") {
+  const f = document.createElement("figure");
+  f.className = `frame ${kind}`;
+  const img = document.createElement("img");
+  img.src = src;
+  img.alt = alt;
+  img.onload = () => scrollDown();
+  f.append(img);
+  return f;
 }
 
-const stampSvg = (top, mid) => `<svg class="stamp" viewBox="0 0 100 100" aria-hidden="true">
-  <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="2"/>
-  <circle cx="50" cy="50" r="28" fill="none" stroke="currentColor" stroke-width="1.6"/>
-  <text font-family="Playfair Display, serif" font-size="9.5" letter-spacing="2.2" fill="currentColor"><textPath href="#stamp-arc">${top}</textPath></text>
-  <text x="50" y="55" text-anchor="middle" font-family="Playfair Display, serif" font-weight="700" font-size="13" fill="currentColor" transform="rotate(-8 50 50)">${mid}</text>
-</svg>`;
+/** 對方的一行：程式碼、貼圖、問句（加框）或一般的話 */
+function lineEl(b) {
+  if (b.code != null) {
+    const p = document.createElement("p");
+    p.className = "line code";
+    p.textContent = b.code;
+    return p;
+  }
+  const name = b.text.match(STICKER_LINE)?.[1];
+  const st = name && stickers.find((x) => x.name === name);
+  if (st) return frameEl(st.src, "sticker", st.name);
+  const p = document.createElement("p");
+  p.className = isQuestion(b.text) ? "line box" : "line";
+  p.innerHTML = `<span class="hl">${inline(b.text)}</span>`;
+  return p;
+}
 
 function nearBottom() {
   return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 140;
@@ -144,7 +225,7 @@ function scrollDown(force = false) {
 
 // ---------- 渲染 ----------
 
-/** 使用者連發的訊息放在同一組，署名放在最後 */
+/** 使用者連發的訊息放在同一組，時間標籤放在最後 */
 function renderUser(msg) {
   let g = chat.lastElementChild;
   if (!g?.classList.contains("me")) {
@@ -152,37 +233,44 @@ function renderUser(msg) {
     g.className = "turn me";
     g.dataset.day = dayKey(msg.time);
     g.append(document.createElement("div"));
-    g.lastChild.className = "sig";
+    g.lastChild.className = "time-tag";
     chat.append(g);
   }
-  const sig = g.lastChild;
-  for (const b of toLines(msg.text)) g.insertBefore(lineEl(b), sig);
-  sig.textContent = `${settings.userName} · ${fmtTime(msg.time)}`;
+  const tag = g.lastChild;
+  if (msg.image) g.insertBefore(frameEl(msg.image, "photo", "照片"), tag);
+  else if (msg.sticker) g.insertBefore(frameEl(msg.sticker.src, "sticker", msg.sticker.name), tag);
+  else {
+    for (const b of toLines(msg.text)) {
+      const p = document.createElement("p");
+      p.className = b.code != null ? "line code" : "line box";
+      if (b.code != null) p.textContent = b.code;
+      else p.innerHTML = `<span class="hl">${inline(b.text)}</span>`;
+      g.insertBefore(p, tag);
+    }
+  }
+  tag.textContent = fmtTime(msg.time);
 }
 
-/** 對方的一輪：封緘的思考卡 / 一行一行的話 / 署名。回傳可以邊收邊更新的控制器。 */
+/** 對方的一輪：一行式思考摘要 / 一行一行的話 / 署名。回傳可以邊收邊更新的控制器。 */
 function renderAssistant(msg = {}) {
   const g = document.createElement("section");
   g.className = "turn ai";
   g.dataset.day = dayKey(msg.time ?? Date.now());
 
-  const sealed = document.createElement("div");
-  sealed.className = "sealed";
-  sealed.hidden = true;
-  sealed.innerHTML = `<div class="sealed-inner">
-    <div class="sealed-head"><span>This turn · Sealed</span><span>Ephemera</span></div>
-    <p class="sealed-title"><b></b> · 內容保密</p>
-    <button type="button" class="sealed-open">揭開看看 ›</button>
-    <div class="sealed-text" hidden></div>
-    ${stampSvg("THIS TURN · SEALED · EPHEMERA ·", "SEALED")}
-  </div>`;
-  const title = sealed.querySelector(".sealed-title b");
-  const openBtn = sealed.querySelector(".sealed-open");
-  const text = sealed.querySelector(".sealed-text");
-  openBtn.onclick = () => {
-    text.hidden = !text.hidden;
-    openBtn.textContent = text.hidden ? "揭開看看 ›" : "重新封上 ‹";
-    if (!text.hidden) text.scrollTop = text.scrollHeight;
+  const musing = document.createElement("button");
+  musing.type = "button";
+  musing.className = "musing";
+  musing.hidden = true;
+  musing.setAttribute("aria-expanded", "false");
+  musing.innerHTML = `<i class="dia"></i><span class="gist"></span><span class="at"></span><span class="caret">▼</span>`;
+  const gist = musing.querySelector(".gist");
+  const card = document.createElement("div");
+  card.className = "musing-card";
+  card.hidden = true;
+  musing.onclick = () => {
+    card.hidden = !card.hidden;
+    musing.setAttribute("aria-expanded", String(!card.hidden));
+    if (!card.hidden) card.scrollTop = card.scrollHeight;
   };
 
   const lines = document.createElement("div");
@@ -190,7 +278,7 @@ function renderAssistant(msg = {}) {
   const sig = document.createElement("div");
   sig.className = "sig";
 
-  g.append(sealed, lines, sig);
+  g.append(musing, card, lines, sig);
   chat.append(g);
 
   let rendered = [];
@@ -211,11 +299,11 @@ function renderAssistant(msg = {}) {
     },
     setThinking(t, live = false) {
       if (!t) return;
-      sealed.hidden = false;
-      sealed.classList.toggle("live", live);
-      title.textContent = live ? "這一輪正在想" : "這一輪想了一些事";
-      text.textContent = t;
-      if (!text.hidden) text.scrollTop = text.scrollHeight;
+      musing.hidden = false;
+      musing.classList.toggle("live", live);
+      gist.textContent = t.split("\n").find((l) => l.trim())?.trim() ?? "";
+      card.textContent = t;
+      if (!card.hidden) card.scrollTop = card.scrollHeight;
       scrollDown();
     },
     setText(t) {
@@ -224,20 +312,19 @@ function renderAssistant(msg = {}) {
         if (!rendered[i]) {
           lines.insertBefore(el, typing);
           rendered.push(el);
-        } else if (rendered[i].innerHTML !== el.innerHTML) {
-          rendered[i].innerHTML = el.innerHTML;
+        } else if (rendered[i].outerHTML !== el.outerHTML) {
+          rendered[i].replaceWith(el);
+          rendered[i] = el;
         }
       });
       scrollDown();
     },
     finish(t) {
       view.typing(false);
-      if (sealed.classList.contains("live")) {
-        sealed.classList.replace("live", "done");
-        title.textContent = "這一輪想了一些事";
-      }
+      musing.classList.remove("live");
+      musing.querySelector(".at").textContent = fmtTime(t);
       sig.textContent = `${settings.aiName} · ${fmtTime(t)}`;
-      if (!rendered.length && sealed.hidden) g.remove();
+      if (!rendered.length && musing.hidden) g.remove();
     },
   };
 
@@ -369,11 +456,14 @@ let replyTimer = 0;
 let generating = false;
 
 function persist() {
-  if (!save(STORE.history, history)) notice("瀏覽器的儲存空間滿了，最新的對話可能不會被記住。", "error");
+  idbSet("history", history)
+    .then(() => localStorage.removeItem(STORE.history)) // 舊版存在 localStorage 的搬過來了
+    .catch(() => notice("瀏覽器的儲存空間滿了，最新的對話可能不會被記住。", "error"));
 }
 
-function send(text) {
-  const msg = { id: uid(), role: "user", text, time: Date.now() };
+/** 傳一則：{ text } / { image } / { sticker } */
+function send(part) {
+  const msg = { id: uid(), role: "user", time: Date.now(), ...part };
   history.push(msg);
   persist();
   renderUser(msg);
@@ -445,7 +535,29 @@ async function getClient() {
 function timeNote() {
   const d = new Date();
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return `現在時間：${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}（週${WEEK[d.getDay()]}）${fmtTime(d)}，${zone}`;
+  const now = `現在時間：${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}（週${WEEK[d.getDay()]}）${fmtTime(d)}，${zone}`;
+  return weather ? `${now}\n${weather.city}現在的天氣：${weather.desc}，${weather.temp}°C` : now;
+}
+
+const imageBlock = (dataUrl) => {
+  const [, media_type, data] = dataUrl.match(/^data:(.+?);base64,(.*)$/);
+  return { type: "image", source: { type: "base64", media_type, data } };
+};
+
+/** 一則使用者訊息在 API 裡的樣子：純文字維持字串，照片和貼圖是區塊 */
+function userContent(m) {
+  if (m.image) return [imageBlock(m.image)];
+  if (m.sticker) return [{ type: "text", text: `（傳了一張貼圖「${m.sticker.name}」）` }, imageBlock(m.sticker.src)];
+  return m.text;
+}
+
+/** 對方能用的貼圖清單，附在人設後面 */
+function stickerNote() {
+  if (!stickers.length) return "";
+  return (
+    "\n\n你可以傳貼圖給對方：單獨一行只寫 [貼圖:名字]。" +
+    `可用的貼圖：${stickers.map((s) => s.name).join("、")}。偶爾在適合的時候用就好。`
+  );
 }
 
 /**
@@ -458,8 +570,13 @@ function buildMessages(ctx) {
   for (const m of history) {
     if (m.role === "user") {
       const prev = out.at(-1);
-      if (prev?.role === "user") prev.content += "\n" + m.text;
-      else out.push({ role: "user", content: m.text });
+      const c = userContent(m);
+      if (prev?.role !== "user") out.push({ role: "user", content: c });
+      else if (typeof prev.content === "string" && typeof c === "string") prev.content += "\n" + c;
+      else {
+        const asBlocks = (x) => (typeof x === "string" ? [{ type: "text", text: x }] : x);
+        prev.content = [...asBlocks(prev.content), ...asBlocks(c)];
+      }
     } else if (out.length) {
       if (m.ctx) out.push({ role: "system", content: m.ctx });
       out.push({ role: "assistant", content: m.content ?? m.text });
@@ -476,7 +593,7 @@ async function askClaude(view) {
   const stream = client.beta.messages.stream({
     model: settings.model || DEFAULTS.model,
     max_tokens: 16000,
-    system: settings.system,
+    system: settings.system + stickerNote(),
     thinking: { type: "adaptive", display: "summarized" },
     output_config: { effort: settings.effort },
     messages: buildMessages(ctx),
@@ -586,8 +703,73 @@ $("#composer").addEventListener("submit", (e) => {
   if (!text) return;
   input.value = "";
   autosize();
-  send(text);
+  send({ text });
 });
+
+// ---------- 照片與貼圖 ----------
+
+$("#pick-photo").onclick = () => $("#photo-input").click();
+$("#photo-input").onchange = async (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (f) send({ image: await readImage(f, 1280) });
+};
+
+const stickerDlg = $("#stickers");
+const grid = $("#sticker-grid");
+
+function renderStickers() {
+  grid.replaceChildren();
+  for (const st of stickers) {
+    const fig = document.createElement("figure");
+    fig.innerHTML = `<img alt=""><figcaption></figcaption><button type="button" class="del" aria-label="刪除">×</button>`;
+    fig.querySelector("img").src = st.src;
+    fig.querySelector("figcaption").textContent = st.name;
+    fig.onclick = (e) => {
+      if (e.target.classList.contains("del")) {
+        if (!confirm(`刪除貼圖「${st.name}」？`)) return;
+        stickers = stickers.filter((x) => x !== st);
+        idbSet("stickers", stickers);
+        return renderStickers();
+      }
+      if (grid.classList.contains("manage")) return;
+      stickerDlg.close();
+      send({ sticker: { name: st.name, src: st.src } });
+    };
+    grid.append(fig);
+  }
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "add";
+  add.textContent = "＋ 新增貼圖";
+  add.onclick = () => $("#sticker-input").click();
+  grid.append(add);
+}
+
+$("#open-stickers").onclick = () => {
+  grid.classList.remove("manage");
+  $("#stickers-manage").textContent = "管理";
+  renderStickers();
+  stickerDlg.showModal();
+};
+$("#stickers-close").onclick = () => stickerDlg.close();
+$("#stickers-manage").onclick = (e) => {
+  const on = grid.classList.toggle("manage");
+  e.target.textContent = on ? "完成" : "管理";
+};
+$("#sticker-input").onchange = async (e) => {
+  for (const f of e.target.files) {
+    const base = f.name.replace(/\.[^.]+$/, "");
+    let name = prompt("幫這張貼圖取個名字（對方會用這個名字挑貼圖）", base)?.trim();
+    if (!name) continue;
+    name = name.replace(/[[\]:：]/g, "");
+    while (stickers.some((x) => x.name === name)) name += "2";
+    stickers.push({ id: uid(), name, src: await readImage(f, 360, "image/png") });
+  }
+  e.target.value = "";
+  idbSet("stickers", stickers).catch(() => alert("存不下了，刪掉幾張再試試。"));
+  renderStickers();
+};
 
 // ---------- 設定 ----------
 
@@ -595,7 +777,7 @@ const dlg = $("#settings");
 const fields = {
   aiName: $("#s-ai-name"), title: $("#s-title"), subtitle: $("#s-subtitle"), userName: $("#s-user-name"),
   system: $("#s-system"), apiKey: $("#s-key"), model: $("#s-model"), effort: $("#s-effort"),
-  injectTime: $("#s-inject-time"), blur: $("#s-blur"), gray: $("#s-gray"), rain: $("#s-rain"),
+  injectTime: $("#s-inject-time"), city: $("#s-city"), blur: $("#s-blur"), gray: $("#s-gray"), rain: $("#s-rain"),
 };
 
 $("#open-settings").onclick = () => {
@@ -615,10 +797,11 @@ for (const el of Object.values(fields)) el.addEventListener("input", readFields)
 dlg.addEventListener("close", () => {
   readFields();
   renderAll(); // 名字可能改了
+  if (settings.city.trim() !== (geo?.query ?? "")) refreshWeather();
 });
 
-/** 圖片縮小後存成 data URL，避免塞爆 localStorage */
-function readImage(file, max) {
+/** 圖片縮小後存成 data URL；貼圖用 PNG 保留透明背景 */
+function readImage(file, max, type = "image/jpeg") {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -628,7 +811,7 @@ function readImage(file, max) {
       c.height = Math.round(img.height * scale);
       c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
       URL.revokeObjectURL(img.src);
-      resolve(c.toDataURL("image/jpeg", 0.85));
+      resolve(c.toDataURL(type, 0.85));
     };
     img.onerror = reject;
     img.src = URL.createObjectURL(file);
@@ -665,3 +848,5 @@ if (!history.length) {
 renderAll();
 autosize();
 input.focus({ preventScroll: true });
+refreshWeather();
+setInterval(refreshWeather, 30 * 60 * 1000);
