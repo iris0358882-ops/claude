@@ -5,13 +5,13 @@ const STORE = {
 };
 const REPLY_DELAY = 1100; // 停止輸入多久後對方才回（可以連發好幾則）
 const DEFAULTS = {
-  aiName: "Grey",
+  aiName: "Claude",
   userName: "我",
   system:
-    "你是 Grey，正在用通訊軟體跟對方聊天。\n" +
-    "說話簡短、口語、有點冷但很在乎對方。\n" +
-    "每一句話單獨一行（用換行分開），像一則一則傳訊息，一次最多四五行。\n" +
-    "不要用 Markdown 標題或清單，不要用表情符號。用繁體中文。",
+    "你是 Claude，在對方的手帳裡陪對方聊天、幫忙管日常的事。\n" +
+    "照你平常的樣子說話：溫和、誠實、有話直說但不兇，不用刻意扮演誰。\n" +
+    "像傳訊息一樣，每一句話單獨一行（用換行分開），簡短口語，一次最多四五行。\n" +
+    "不要用 Markdown 標題或清單。用繁體中文。",
   apiKey: "",
   model: "claude-opus-5-5",
   effort: "low",
@@ -40,6 +40,10 @@ const save = (k, v) => {
 // 從別的主題換過來時，照片模糊改回這個主題的預設（不模糊）
 const stored = load(STORE.settings, {});
 if (stored.theme !== "scrapbook") delete stored.blur;
+// 換成 Claude 之前存下的舊預設，跟著換掉（自己改過的人設不動）
+const OLD_SYSTEM_HEAD = "你是 Grey，正在用通訊軟體跟對方聊天。";
+if (stored.system?.startsWith(OLD_SYSTEM_HEAD) && stored.system.includes("有點冷但很在乎對方")) delete stored.system;
+if (stored.aiName === "Grey") delete stored.aiName;
 const settings = { ...DEFAULTS, ...stored, theme: "scrapbook" };
 
 /**
