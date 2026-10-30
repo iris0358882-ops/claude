@@ -1,4 +1,4 @@
-const APP_VERSION = "2026.10.29-m"; // 設定最下面會顯示，用來確認手機上是不是新版
+const APP_VERSION = "2026.10.30-a"; // 設定最下面會顯示，用來確認手機上是不是新版
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
 const STORE = {
   settings: "grey.settings", history: "grey.history", bg: "grey.bg",
@@ -1473,6 +1473,15 @@ $("#s-del-persona").onclick = () => {
 
 const pagesBox = $("#pages");
 const fmtDay = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${fmtTime(t)}`; };
+/** 索引卡上的時間：今天・17:20、昨天、10月26日 */
+function fmtCard(t) {
+  if (!t) return "還沒開始聊";
+  const days = Math.round((new Date(dayKey(Date.now())) - new Date(dayKey(t))) / 864e5);
+  if (days === 0) return `今天・${fmtTime(t)}`;
+  if (days === 1) return "昨天";
+  const d = new Date(t);
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
+}
 const openPages = () => { pagesBox.classList.add("open"); $("#pages-scrim").hidden = false; };
 const closePages = () => { pagesBox.classList.remove("open"); $("#pages-scrim").hidden = true; };
 
@@ -1495,7 +1504,6 @@ function renderPages() {
   if (filled) save(STORE.settings, settings);
   const list = [...pagesOf(p)].sort((a, b) => (b.updated || 0) - (a.updated || 0));
   $("#pages-who").textContent = p.name;
-  $("#page-name").textContent = (page().title || "新的一頁").slice(0, 8);
   $("#pages-list").replaceChildren(...list.map((pg) => {
     const card = document.createElement("div");
     card.className = "page-card";
@@ -1504,8 +1512,8 @@ function renderPages() {
     open.type = "button";
     open.className = "page-open";
     open.innerHTML = `<span class="t"></span><small></small>`;
-    open.firstChild.textContent = pg.title || "新的一頁";
-    open.lastChild.textContent = pg.updated ? fmtDay(pg.updated) : "還沒開始聊";
+    open.firstChild.textContent = pg.title || "新對話";
+    open.lastChild.textContent = fmtCard(pg.updated);
     open.onclick = () => switchPage(pg.id);
     card.append(open);
     if (list.length > 1) {
@@ -1548,7 +1556,7 @@ function deletePage(id) {
   if (p.pages.length < 2) return;
   if (generating && id === p.page) return notice(`等 ${settings.aiName} 回完再撕喔。`);
   const pg = p.pages.find((x) => x.id === id);
-  if (!confirm(`撕掉「${pg?.title || "新的一頁"}」？這一頁的對話會一起刪掉。`)) return;
+  if (!confirm(`撕掉「${pg?.title || "新對話"}」？這段對話會一起刪掉。`)) return;
   for (const m of load(pageKey(p.id, id), [])) if (m.photo) photos.del(m.photo);
   localStorage.removeItem(pageKey(p.id, id));
   p.pages = p.pages.filter((x) => x.id !== id);

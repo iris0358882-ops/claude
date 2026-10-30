@@ -30,8 +30,14 @@
   </svg>
 
   <div class="app">
-    <button class="menu-btn" id="open-settings" aria-label="設定">
+    <button class="menu-btn pages-btn" id="open-pages" aria-label="對話列表">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg>
+    </button>
+    <button class="menu-btn pins-btn" id="open-pins" aria-label="便條">
+      <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M6 3.5h9l3 3v14H6z"/><path d="M9 10h6M9 14h6M9 18h3"/></svg>
+    </button>
+    <button class="menu-btn" id="open-settings" aria-label="設定">
+      <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
     </button>
 
     <!-- 今日卡片：日期、天氣、待辦、提醒 -->
@@ -60,8 +66,6 @@
 
     <div class="quick" id="quick">
       <label class="who" title="換角色"><select id="who" aria-label="聊天對象"></select></label>
-      <button type="button" class="pages-btn" id="open-pages" aria-label="換一頁對話"><span id="page-name"></span> ▾</button>
-      <button type="button" id="open-pins">便條</button>
     </div>
 
     <!-- 選好、還沒送出的照片 -->
@@ -85,8 +89,8 @@
 
   <!-- 每個角色的好幾頁對話：一疊索引卡 -->
   <aside class="pages" id="pages" aria-label="對話的頁">
-    <div class="pages-head"><b id="pages-who"></b><span class="caps">Pages</span></div>
-    <button type="button" class="pages-new" id="pages-new">＋ 新的一頁</button>
+    <div class="pages-head"><b id="pages-who"></b><span class="caps">My notebook</span></div>
+    <button type="button" class="pages-new" id="pages-new">＋ 新對話</button>
     <nav class="pages-list" id="pages-list"></nav>
   </aside>
   <div class="pages-scrim" id="pages-scrim" hidden></div>
