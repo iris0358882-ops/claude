@@ -60,6 +60,8 @@
 
     <div class="quick" id="quick">
       <label class="who" title="換角色"><select id="who" aria-label="聊天對象"></select></label>
+      <button type="button" class="pages-btn" id="open-pages" aria-label="換一頁對話"><span id="page-name"></span> ▾</button>
+      <button type="button" id="open-pins">便條</button>
     </div>
 
     <!-- 選好、還沒送出的照片 -->
@@ -80,6 +82,32 @@
       <button type="submit" class="send" id="send" disabled>Send</button>
     </form>
   </div>
+
+  <!-- 每個角色的好幾頁對話：一疊索引卡 -->
+  <aside class="pages" id="pages" aria-label="對話的頁">
+    <div class="pages-head"><b id="pages-who"></b><span class="caps">Pages</span></div>
+    <button type="button" class="pages-new" id="pages-new">＋ 新的一頁</button>
+    <nav class="pages-list" id="pages-list"></nav>
+  </aside>
+  <div class="pages-scrim" id="pages-scrim" hidden></div>
+
+  <!-- 釘起來的話 -->
+  <dialog id="pins" class="ticket-sheet">
+    <form method="dialog" class="ticket">
+      <div class="ticket-rule"></div>
+      <div class="ticket-head">
+        <div>
+          <div class="ticket-title">Notes</div>
+          <div class="ticket-kicker">Pinned lines</div>
+        </div>
+        <button class="ticket-close" value="close" aria-label="關閉">×</button>
+      </div>
+      <p class="hint pins-hint">按回覆署名旁的「釘」，那一段就會貼到這裡。</p>
+      <div class="pin-list" id="pin-list"></div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" hidden></div>
 
   <!-- 設定 -->
   <dialog id="settings" class="ticket-sheet">
@@ -179,6 +207,8 @@
       <fieldset>
         <h3 class="legend">外觀</h3>
         <label>字型 <span class="hint" id="s-font-state"></span><select id="s-font"></select></label>
+        <div class="swatch-row"><span>紙張</span><div class="swatches" id="s-papers"></div></div>
+        <div class="swatch-row"><span>印泥</span><div class="swatches" id="s-inks"></div></div>
         <div class="row">
           <span>背景照片</span>
           <label class="file-btn">選擇圖片<input id="s-bg" type="file" accept="image/*" hidden /></label>
@@ -200,7 +230,7 @@
       <p class="hint version" id="s-version"></p>
 
       <div class="actions">
-        <button type="button" class="danger" id="s-clear">清空對話</button>
+        <button type="button" class="danger" id="s-clear">清空這一頁</button>
         <button value="close" class="primary">完成</button>
       </div>
     </form>

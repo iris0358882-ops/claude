@@ -1,8 +1,9 @@
-const APP_VERSION = "2026.10.29-k"; // 設定最下面會顯示，用來確認手機上是不是新版
+const APP_VERSION = "2026.10.29-m"; // 設定最下面會顯示，用來確認手機上是不是新版
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
 const STORE = {
   settings: "grey.settings", history: "grey.history", bg: "grey.bg",
   todos: "grey.todos", memory: "grey.memory", reminders: "grey.reminders", todayOpen: "grey.todayOpen", weather: "grey.weather",
+  pins: "grey.pins",
 };
 const REPLY_DELAY = 1100; // 停止輸入多久後對方才回（可以連發好幾則）
 const DEFAULTS = {
@@ -18,7 +19,9 @@ const DEFAULTS = {
   effort: "low",
   blur: 0,
   place: { name: "台北", lat: 25.033, lon: 121.565 },
-  font: "huninn",
+  font: "iansui",
+  paper: "#e3a1ad",
+  ink: "#b4365a",
   welcome: true,
   autoSpeak: false,
   elevenKey: "",
@@ -143,11 +146,23 @@ function mirrorPersona() {
 mirrorPersona();
 const historyKey = (id) => (id === "claude" ? STORE.history : `${STORE.history}.${id}`);
 
+// 每個角色可以開好幾頁。第一頁沿用原本的 key，舊的對話不用搬；之後開的頁存在「角色的 key~頁的 id」
+const MAIN_PAGE = "main";
+const pageKey = (personaId, pageId) => (pageId === MAIN_PAGE ? historyKey(personaId) : `${historyKey(personaId)}~${pageId}`);
+function pagesOf(p) {
+  if (!Array.isArray(p.pages) || !p.pages.length) p.pages = [{ id: MAIN_PAGE, title: "", updated: 0 }];
+  if (!p.pages.some((x) => x.id === p.page)) p.page = p.pages[0].id;
+  return p.pages;
+}
+for (const p of settings.personas) pagesOf(p);
+const page = () => pagesOf(persona()).find((x) => x.id === persona().page);
+
 /**
  * ctx 是更早的版本每輪注入的時間；那些回覆要原樣送回，所以保留。
  * @type {{id:string, role:'user'|'assistant', text:string, time:number, thinking?:string, content?:any[], ctx?:string}[]}
  */
-let history = load(historyKey(settings.active), null) ?? (settings.active === "claude" ? await fromLaterVersion() : []);
+let history = load(pageKey(settings.active, persona().page), null) ??
+  (settings.active === "claude" && persona().page === MAIN_PAGE ? await fromLaterVersion() : []);
 
 /** 有一版把對話存在 IndexedDB；把文字搬回來（照片和貼圖只留一句說明） */
 async function fromLaterVersion() {
@@ -290,6 +305,14 @@ function applyLook() {
   const photo = $("#photo");
   photo.style.backgroundImage = bg ? `url("${bg}")` : "";
   photo.classList.toggle("on", !!bg);
+
+  root.setProperty("--paper", settings.paper);
+  root.setProperty("--paper-deep", `color-mix(in srgb, ${settings.paper} 86%, #000)`);
+  root.setProperty("--card-pink", `color-mix(in srgb, ${settings.paper} 24%, #fbf7f4)`);
+  root.setProperty("--crimson", settings.ink);
+  root.setProperty("--crimson-ink", `color-mix(in srgb, ${settings.ink} 84%, #000)`);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", settings.paper);
+  for (const b of document.querySelectorAll(".swatch")) b.setAttribute("aria-pressed", b.dataset.hex === settings[b.dataset.key]);
 
   $("#ph").textContent = `給 ${settings.aiName} 發消息…`;
   input.setAttribute("aria-label", `給 ${settings.aiName} 發消息`);
@@ -828,7 +851,13 @@ function renderAssistant(msg = {}) {
         btn.setAttribute("aria-label", "唸給我聽");
         btn.textContent = "▶";
         btn.onclick = () => speak(rendered.map((el) => el.textContent).join("\n"), btn);
-        sig.append(btn);
+        const pin = document.createElement("button");
+        pin.type = "button";
+        pin.className = "speak";
+        pin.setAttribute("aria-label", "釘到便條");
+        pin.textContent = "釘";
+        pin.onclick = () => addPin(rendered.map((el) => el.textContent).join("\n"));
+        sig.append(btn, pin);
         view.speakBtn = btn;
       }
       if (!rendered.length && sealed.hidden && acts.hidden) g.remove();
@@ -867,7 +896,11 @@ let replyTimer = 0;
 let generating = false;
 
 function persist() {
-  if (!save(historyKey(settings.active), history)) notice("瀏覽器的儲存空間滿了，最新的對話可能不會被記住。", "error");
+  if (!save(pageKey(settings.active, persona().page), history)) notice("瀏覽器的儲存空間滿了，最新的對話可能不會被記住。", "error");
+  // 索引卡上的標題（第一句話）和最後聊天的時間
+  describePage(page(), history);
+  save(STORE.settings, settings);
+  renderPages();
 }
 
 async function send(text, photo = null) {
@@ -1373,9 +1406,10 @@ function imagePicker(inputSel, key, max) {
 imagePicker("#s-bg", STORE.bg, 1600);
 $("#s-bg-reset").onclick = () => { localStorage.removeItem(STORE.bg); applyLook(); };
 $("#s-clear").onclick = () => {
-  if (!confirm(`確定清空跟 ${settings.aiName} 的所有對話？`)) return;
+  if (!confirm(`確定清空跟 ${settings.aiName} 的這一頁對話？`)) return;
   for (const m of history) if (m.photo) photos.del(m.photo);
   history = [];
+  page().title = "";
   greet();
   persist();
   dlg.close();
@@ -1406,10 +1440,11 @@ function switchPersona(id) {
   settings.active = id;
   mirrorPersona();
   save(STORE.settings, settings);
-  history = load(historyKey(id), []);
+  history = load(pageKey(id, persona().page), []);
   greet();
   applyLook();
   renderWho();
+  renderPages();
   renderAll();
   if (dlg.open) fillFields();
 }
@@ -1427,12 +1462,162 @@ $("#s-del-persona").onclick = () => {
   if (settings.personas.length < 2) return;
   if (!confirm(`刪掉 ${settings.aiName}？跟他的對話也會一起刪掉。`)) return;
   const id = settings.active;
-  localStorage.removeItem(historyKey(id));
+  for (const pg of pagesOf(persona())) localStorage.removeItem(pageKey(id, pg.id));
   settings.personas = settings.personas.filter((p) => p.id !== id);
   settings.active = "";
   switchPersona(settings.personas[0].id);
   fillFields();
 };
+
+// ---------- 好幾頁對話：索引卡 ----------
+
+const pagesBox = $("#pages");
+const fmtDay = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${fmtTime(t)}`; };
+const openPages = () => { pagesBox.classList.add("open"); $("#pages-scrim").hidden = false; };
+const closePages = () => { pagesBox.classList.remove("open"); $("#pages-scrim").hidden = true; };
+
+/** 從一頁的對話算出索引卡上的標題（第一句話）和最後聊天的時間 */
+function describePage(pg, list) {
+  const talk = list.filter((m) => !m.hidden && (m.role === "user" || m.role === "assistant"));
+  pg.updated = talk.at(-1)?.time ?? pg.updated;
+  if (!pg.title) pg.title = (talk.find((m) => m.role === "user" && m.text)?.text ?? "").replace(/\s+/g, " ").slice(0, 16);
+}
+
+function renderPages() {
+  const p = persona();
+  // 以前存的對話還沒有標題：讀一次補上
+  let filled = false;
+  for (const pg of pagesOf(p)) {
+    if (pg.title || pg.updated) continue;
+    describePage(pg, pg.id === p.page ? history : load(pageKey(p.id, pg.id), []));
+    filled ||= !!(pg.title || pg.updated);
+  }
+  if (filled) save(STORE.settings, settings);
+  const list = [...pagesOf(p)].sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  $("#pages-who").textContent = p.name;
+  $("#page-name").textContent = (page().title || "新的一頁").slice(0, 8);
+  $("#pages-list").replaceChildren(...list.map((pg) => {
+    const card = document.createElement("div");
+    card.className = "page-card";
+    card.setAttribute("aria-current", pg.id === p.page);
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "page-open";
+    open.innerHTML = `<span class="t"></span><small></small>`;
+    open.firstChild.textContent = pg.title || "新的一頁";
+    open.lastChild.textContent = pg.updated ? fmtDay(pg.updated) : "還沒開始聊";
+    open.onclick = () => switchPage(pg.id);
+    card.append(open);
+    if (list.length > 1) {
+      const x = document.createElement("button");
+      x.type = "button";
+      x.className = "x";
+      x.setAttribute("aria-label", "撕掉這一頁");
+      x.textContent = "×";
+      x.onclick = () => deletePage(pg.id);
+      card.append(x);
+    }
+    return card;
+  }));
+}
+
+function switchPage(id) {
+  const p = persona();
+  if (id === p.page) return closePages();
+  if (generating) return notice(`等 ${settings.aiName} 回完再換頁喔。`);
+  clearTimeout(replyTimer);
+  p.page = id;
+  save(STORE.settings, settings);
+  history = load(pageKey(p.id, id), []);
+  greet();
+  renderPages();
+  renderAll();
+  closePages();
+}
+
+function newPage() {
+  if (generating) return notice(`等 ${settings.aiName} 回完再開新的一頁喔。`);
+  const pg = { id: uid(), title: "", updated: Date.now() };
+  persona().pages.push(pg);
+  switchPage(pg.id);
+  input.focus({ preventScroll: true });
+}
+
+function deletePage(id) {
+  const p = persona();
+  if (p.pages.length < 2) return;
+  if (generating && id === p.page) return notice(`等 ${settings.aiName} 回完再撕喔。`);
+  const pg = p.pages.find((x) => x.id === id);
+  if (!confirm(`撕掉「${pg?.title || "新的一頁"}」？這一頁的對話會一起刪掉。`)) return;
+  for (const m of load(pageKey(p.id, id), [])) if (m.photo) photos.del(m.photo);
+  localStorage.removeItem(pageKey(p.id, id));
+  p.pages = p.pages.filter((x) => x.id !== id);
+  if (p.page === id) {
+    p.page = [...p.pages].sort((a, b) => (b.updated || 0) - (a.updated || 0))[0].id;
+    history = load(pageKey(p.id, p.page), []);
+    greet();
+    renderAll();
+  }
+  save(STORE.settings, settings);
+  renderPages();
+}
+
+$("#open-pages").onclick = openPages;
+$("#pages-scrim").onclick = closePages;
+$("#pages-new").onclick = newPage;
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePages(); });
+
+// ---------- 便條：釘起來的話 ----------
+
+let pins = load(STORE.pins, []);
+let toastTimer = 0;
+function toast(text) {
+  const el = $("#toast");
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 1600);
+}
+
+function addPin(text) {
+  pins.unshift({ id: uid(), text, from: settings.aiName, page: page().title, time: Date.now() });
+  save(STORE.pins, pins);
+  renderPins();
+  toast("釘到便條了");
+}
+
+function renderPins() {
+  const box = $("#pin-list");
+  if (!pins.length) return box.replaceChildren(Object.assign(document.createElement("p"), { className: "hint", textContent: "還沒有釘任何東西。" }));
+  box.replaceChildren(...pins.map((n) => {
+    const el = document.createElement("div");
+    el.className = "memo pin";
+    el.innerHTML = `<div class="pin-head"><span class="memo-head"></span><button type="button" class="x" aria-label="撕掉">×</button></div><div class="memo-text"></div>`;
+    el.querySelector(".memo-head").textContent = `${n.from} · ${fmtDay(n.time)}`;
+    el.querySelector(".memo-text").textContent = n.text;
+    el.querySelector(".x").onclick = () => { pins = pins.filter((x) => x.id !== n.id); save(STORE.pins, pins); renderPins(); };
+    return el;
+  }));
+}
+$("#open-pins").onclick = () => { renderPins(); $("#pins").showModal(); };
+
+// ---------- 外觀：紙張與印泥 ----------
+
+const PAPERS = [["櫻粉", "#e3a1ad"], ["杏桃", "#e9b59a"], ["薄荷", "#a9cfc0"], ["藤紫", "#bfaed6"], ["奶油", "#ece0c4"], ["霧藍", "#a9bfd8"]];
+const INKS = [["印泥紅", "#b4365a"], ["朱紅", "#c2412d"], ["墨綠", "#2f6b55"], ["深藍", "#2f4f8a"], ["葡萄", "#6d3a7c"], ["墨黑", "#3a2a2e"]];
+for (const [box, list, key] of [["#s-papers", PAPERS, "paper"], ["#s-inks", INKS, "ink"]]) {
+  $(box).replaceChildren(...list.map(([name, hex]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "swatch";
+    b.style.background = hex;
+    b.title = name;
+    b.setAttribute("aria-label", name);
+    Object.assign(b.dataset, { hex, key });
+    b.onclick = () => { settings[key] = hex; save(STORE.settings, settings); applyLook(); };
+    return b;
+  }));
+}
 
 // ---------- 唸給我聽（手機內建的語音） ----------
 
@@ -1656,6 +1841,7 @@ if ("serviceWorker" in navigator) {
 
 applyLook();
 renderWho();
+renderPages();
 setTodayOpen(load(STORE.todayOpen, true));
 renderToday();
 refreshWeather();
