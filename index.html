@@ -169,7 +169,23 @@
       </fieldset>
 
       <fieldset>
-        <h3 class="legend">朗讀 <span class="hint">按署名旁的 ▶ 才會唸</span></h3>
+        <h3 class="legend">狀態欄 <span class="hint">接你的 MCP，心情和關係會一路延續</span></h3>
+        <label>MCP 網址 <input id="s-mcp-url" type="url" placeholder="https://你的服務.onrender.com" autocomplete="off" /></label>
+        <label>MCP Key <input id="s-mcp-key" type="password" autocomplete="off" /></label>
+        <label class="check"><input id="s-state" type="checkbox" /> 這個角色開啟狀態欄</label>
+        <div class="place-search">
+          <input id="s-met-on" type="date" />
+          <button type="button" class="file-btn" id="s-met-on-set">設成相識第一天</button>
+        </div>
+        <div class="row">
+          <span class="hint" id="s-state-info"></span>
+          <button type="button" class="link" id="s-state-undo">狀態退回上一回合</button>
+        </div>
+        <p class="hint">狀態存在你的 MCP 伺服器上，用角色名字辨認（跟在 Claude 裡用 get_state 是同一份），改名字就會變成一份新的。Key 不會放進備份。</p>
+      </fieldset>
+
+      <fieldset>
+        <h3 class="legend">朗讀<span class="hint">按署名旁的 ▶ 才會唸</span></h3>
         <label>ElevenLabs API Key <span class="hint">不填就用手機內建的聲音</span>
           <input id="s-eleven-key" type="password" placeholder="sk_…" autocomplete="off" />
         </label>

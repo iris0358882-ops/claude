@@ -1,4 +1,4 @@
-const APP_VERSION = "2026.10.30-a"; // 設定最下面會顯示，用來確認手機上是不是新版
+const APP_VERSION = "2026.11.01-a"; // 設定最下面會顯示，用來確認手機上是不是新版
 const SDK_URL = "./vendor/anthropic-sdk.js"; // @anthropic-ai/sdk 1.3.0，已打包成瀏覽器可用的單檔
 const STORE = {
   settings: "grey.settings", history: "grey.history", bg: "grey.bg",
@@ -25,6 +25,8 @@ const DEFAULTS = {
   welcome: true,
   autoSpeak: false,
   elevenKey: "",
+  mcpUrl: "",
+  mcpKey: "",
 };
 
 // 中文字型：都是 Google Fonts 上免費的（中文字型會依用到的字分片下載，不會一次載完）
@@ -92,6 +94,98 @@ const BUTLER_PROMPT = () =>
   "用工具之後照你原本的語氣簡短回覆，不要把工具結果整段念出來。\n" +
   "每則訊息開頭的（現在時間：…）是系統附上的，用來判斷時間，不是對方打的字。\n" +
   (settings.userName && settings.userName !== "我" ? `對方的名字是 ${settings.userName}。` : "");
+
+// ---------- 狀態欄（存在自己的 MCP 伺服器上） ----------
+
+const STATE_STEP = 1;       // 信任／親近一回合最多變多少
+const MCP_TIMEOUT = 15000;  // Render 免費方案睡著時第一次會比較慢
+const stateOn = () => !!(persona().state && settings.mcpUrl && settings.mcpKey);
+const stateName = () => persona().name;
+
+async function mcpCall(path, body) {
+  const base = settings.mcpUrl.trim().replace(/\/+$/, "").replace(/\/mcp$/, "");
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), MCP_TIMEOUT);
+  try {
+    const r = await fetch(base + path, {
+      method: body === undefined ? "GET" : "POST",
+      headers: { "x-api-key": settings.mcpKey.trim(), ...(body !== undefined && { "content-type": "application/json" }) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (r.status === 401) throw new Error("MCP Key 不對");
+    if (!r.ok) throw new Error(`MCP 回應 ${r.status}`);
+    return await r.json();
+  } catch (e) {
+    throw e?.name === "AbortError" ? new Error("MCP 太久沒回應") : e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+const statePath = (name = stateName()) => `/api/state/${encodeURIComponent(name)}`;
+const getState = () => mcpCall(statePath());
+
+const STATE_PROMPT =
+  "你有一份會延續的「目前狀態」，系統會放在對方最新訊息的開頭（（目前狀態：…）），那是上一回合留下來的。照著它演，讓心情和關係有連續性，不要每回合重新開始。\n" +
+  "每次回覆，在正文的最後依序附上這兩段（對方看不到原文，介面會畫成卡片）：\n" +
+  "<inner>一到三句你此刻真實、具體的內心念頭：喜歡、得意、吃醋、擔心、吐槽或小小的壞念頭都可以。不要總結正文，不要說明你為什麼這樣回，不要套話。</inner>\n" +
+  "<state>{只放這回合有變的欄位，JSON}</state>\n" +
+  "欄位：\n" +
+  "- mood：現在的心情，一句短而具體的描述（例如「嘴硬，但其實很開心」）\n" +
+  "- relationship：{\"trust\": 1–10, \"closeness\": 1–10}。變化要慢，一回合最多動 1，沒有明確理由就不要動\n" +
+  "- goal：你現在想做、想確認的事\n" +
+  "- pending：還沒完成的約定或待處理的事（字串陣列，要改就整組重寫，完成了就拿掉）\n" +
+  "- free：1～2 個像你本人會取的自由欄位，例如 {\"嘴硬度\": \"…\"}、{\"吃醋值\": \"…\"}。可以換，但不要每回合都換，不要用百分比；要改就整組重寫\n" +
+  "沒變的欄位不要寫；什麼都沒變就寫 <state>{}</state>。時間和相識天數由系統計算，不要寫進狀態。";
+
+/** 把 <inner>／<state> 從畫面上的文字拿掉（串流中只收到一半的標籤也拿掉） */
+const visibleText = (t) =>
+  t.replace(/<(inner|state)>[\s\S]*?(<\/\1>|$)/g, "").replace(/<\/?[a-z]{0,6}$/i, "").replace(/\n{3,}/g, "\n\n").trim();
+
+function parseStateTags(raw) {
+  const inner = raw.match(/<inner>([\s\S]*?)<\/inner>/)?.[1].trim() ?? "";
+  let changes = null;
+  const s = raw.match(/<state>([\s\S]*?)<\/state>/)?.[1];
+  if (s != null) {
+    try {
+      const j = JSON.parse(s.trim().replace(/^```(?:json)?\s*|\s*```$/g, "") || "{}");
+      if (j && typeof j === "object" && !Array.isArray(j)) changes = j;
+    } catch {}
+  }
+  return { inner, changes };
+}
+
+/** 送出前整理：信任／親近限制變化幅度；free 整組換掉 */
+function tidyChanges(old, changes) {
+  const c = { ...changes };
+  delete c._time;
+  delete c.met_on;
+  if (c.relationship && typeof c.relationship === "object") {
+    const rel = { ...c.relationship };
+    for (const k of ["trust", "closeness"]) {
+      if (rel[k] == null) continue;
+      let v = Math.round(Number(rel[k]));
+      if (Number.isNaN(v)) { delete rel[k]; continue; }
+      const prev = Number(old.relationship?.[k]);
+      if (!Number.isNaN(prev)) v = Math.min(prev + STATE_STEP, Math.max(prev - STATE_STEP, v));
+      rel[k] = Math.min(10, Math.max(1, v));
+    }
+    c.relationship = rel;
+  }
+  if (c.free && typeof c.free === "object" && old.free && typeof old.free === "object") {
+    c.free = { ...c.free };
+    for (const k of Object.keys(old.free)) if (!(k in c.free)) c.free[k] = null;
+  }
+  return c;
+}
+
+/** 放進訊息開頭給模型看的狀態 */
+function stateText(st) {
+  const { _time, met_on, ...rest } = st;
+  const days = _time?.days_known ? `相識第 ${_time.days_known} 天。` : "";
+  if (!Object.keys(rest).length) return `（目前狀態：還是空的，這回合請把 mood、relationship、goal、free 都設定好。${days}）`;
+  return `（目前狀態：${JSON.stringify(rest)}${days ? "　" + days : ""}）`;
+}
 
 // ---------- 儲存 ----------
 
@@ -788,8 +882,14 @@ function renderAssistant(msg = {}) {
   lines.className = "turn lines";
   const sig = document.createElement("div");
   sig.className = "sig";
+  const status = document.createElement("div");
+  status.className = "status";
+  status.hidden = true;
+  const innerBox = document.createElement("div");
+  innerBox.className = "inner";
+  innerBox.hidden = true;
 
-  g.append(sealed, acts, lines, sig);
+  g.append(sealed, status, acts, lines, innerBox, sig);
   chat.append(g);
 
   let rendered = [];
@@ -815,6 +915,19 @@ function renderAssistant(msg = {}) {
       title.textContent = live ? "這一輪正在想" : "這一輪想了一些事";
       text.textContent = t;
       if (!text.hidden) text.scrollTop = text.scrollHeight;
+      scrollDown();
+    },
+    setStatus(st) {
+      if (!st) return;
+      fillStatus(status, st);
+      status.hidden = false;
+      scrollDown();
+    },
+    setInner(t) {
+      if (!t) return;
+      innerBox.innerHTML = `<span class="inner-label">心聲 · Inner voice</span><p></p>`;
+      innerBox.querySelector("p").textContent = t;
+      innerBox.hidden = false;
       scrollDown();
     },
     addAction(a) {
@@ -866,11 +979,43 @@ function renderAssistant(msg = {}) {
 
   if (msg.text != null) {
     view.setThinking(msg.thinking);
+    view.setStatus(msg.status);
     for (const a of msg.actions ?? []) view.addAction(a);
     view.setText(msg.text);
+    view.setInner(msg.inner);
     view.finish(msg.time);
   }
   return view;
+}
+
+/** 狀態卡：時間、天數、心情、關係、想做的事、約定、自由欄位 */
+function fillStatus(box, st) {
+  const t = st._time ?? {};
+  const meter = (n) => (n == null || Number.isNaN(Number(n)) ? "" : "●".repeat(Math.max(0, Math.min(10, n))) + "○".repeat(Math.max(0, 10 - Math.min(10, n))));
+  const rows = [];
+  if (st.mood) rows.push(["心情", String(st.mood)]);
+  if (st.relationship?.trust != null) rows.push(["信任", meter(Number(st.relationship.trust)), "meter"]);
+  if (st.relationship?.closeness != null) rows.push(["親近", meter(Number(st.relationship.closeness)), "meter"]);
+  if (st.goal) rows.push(["想做的事", String(st.goal)]);
+  if (Array.isArray(st.pending) && st.pending.length) rows.push(["約定", st.pending.map(String).join("・")]);
+  if (st.free && typeof st.free === "object") for (const [k, v] of Object.entries(st.free)) if (v != null) rows.push([k, String(v)]);
+
+  box.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "status-head";
+  head.innerHTML = "<span></span><span></span>";
+  head.firstChild.textContent = t.days_known ? `Status · 相識第 ${t.days_known} 天` : "Status";
+  head.lastChild.textContent = t.now ?? "";
+  const dl = document.createElement("dl");
+  for (const [k, v, cls] of rows) {
+    const dt = document.createElement("dt");
+    dt.textContent = k;
+    const dd = document.createElement("dd");
+    dd.textContent = v;
+    if (cls) dd.className = cls;
+    dl.append(dt, dd);
+  }
+  box.append(head, dl);
 }
 
 function notice(text, kind = "") {
@@ -1047,10 +1192,17 @@ function withCache(messages) {
 async function askClaude(view) {
   const client = await getClient();
   const base = buildMessages(await loadPhotosFor(history.slice(-(WINDOW_KEEP + WINDOW_STEP))));
+  // 狀態欄：先跟 MCP 拿上一回合的狀態；連不上就照常聊，只是這輪沒有狀態
+  const useState = stateOn();
+  let oldState = null;
+  if (useState) {
+    try { oldState = await getState(); }
+    catch (err) { notice(`狀態讀不到（${err.message}），這輪先不更新。`, "error"); }
+  }
   // 最新那則附上現在時間（只在送出時加，不存進歷史）
   const last = base.at(-1);
   if (last?.role === "user") {
-    const t = `（現在時間：${nowText()}）`;
+    const t = `（現在時間：${nowText()}）` + (oldState ? `\n${stateText(oldState)}` : "");
     base[base.length - 1] = {
       role: "user",
       content: typeof last.content === "string" ? `${t}\n${last.content}` : [{ type: "text", text: t }, ...last.content],
@@ -1068,6 +1220,7 @@ async function askClaude(view) {
       system: [
         { type: "text", text: settings.system },
         { type: "text", text: BUTLER_PROMPT() },
+        ...(useState ? [{ type: "text", text: STATE_PROMPT }] : []),
         { type: "text", text: memoryPrompt() },
       ],
       thinking: { type: "adaptive", display: "summarized" },
@@ -1085,7 +1238,7 @@ async function askClaude(view) {
     });
     stream.on("text", (delta) => {
       text += delta;
-      view.setText(text);
+      view.setText(visibleText(text));
     });
 
     const final = await stream.finalMessage();
@@ -1115,10 +1268,25 @@ async function askClaude(view) {
   if (turns.at(-1)?.role === "user") {
     turns.push({ role: "assistant", content: [{ type: "text", text: "（先做到這裡）" }] });
     text += "（先做到這裡）";
-    view.setText(text);
+    view.setText(visibleText(text));
   }
-  if (!text.trim() && !actions.length) return null;
-  return { text: text.trim(), thinking, turns, actions };
+
+  // 把 <inner>／<state> 拿出來：心聲畫成卡片，狀態存回 MCP（模型自己那份 turns 保留原文，下一輪看得到）
+  const { inner, changes } = parseStateTags(text);
+  let status;
+  if (useState && oldState) {
+    try {
+      status = changes && Object.keys(changes).length ? await mcpCall(statePath(), tidyChanges(oldState, changes)) : oldState;
+    } catch (err) {
+      status = oldState;
+      notice(`狀態沒存到（${err.message}）。`, "error");
+    }
+    view.setStatus(status);
+  }
+  if (inner) view.setInner(inner);
+  const shown = visibleText(text);
+  if (!shown && !actions.length) return null;
+  return { text: shown, thinking, turns, actions, ...(status && { status }), ...(inner && { inner }) };
 }
 
 // ---------- 示範模式（沒有 API Key 時） ----------
@@ -1233,11 +1401,45 @@ const fields = {
   aiName: $("#s-ai-name"), userName: $("#s-user-name"),
   system: $("#s-system"), apiKey: $("#s-key"), effort: $("#s-effort"), font: $("#s-font"),
   welcome: $("#s-welcome"), autoSpeak: $("#s-autospeak"), elevenKey: $("#s-eleven-key"),
-  blur: $("#s-blur"),
+  blur: $("#s-blur"), mcpUrl: $("#s-mcp-url"), mcpKey: $("#s-mcp-key"),
 };
+
+// 狀態欄設定：開關是每個角色各自的
+function showStateInfo(msg) { $("#s-state-info").textContent = msg; }
+async function checkState() {
+  if (!settings.mcpUrl || !settings.mcpKey) return showStateInfo("填好網址和 Key 就能用");
+  showStateInfo("連線中…");
+  try {
+    const st = await getState();
+    const t = st._time ?? {};
+    showStateInfo(`已連上・${stateName()}${t.days_known ? `・相識第 ${t.days_known} 天` : "・還沒設相識日"}`);
+    if (st.met_on) $("#s-met-on").value = st.met_on;
+  } catch (err) {
+    showStateInfo(`連不上：${err.message}`);
+  }
+}
+$("#s-state").addEventListener("change", (e) => {
+  persona().state = e.target.checked;
+  save(STORE.settings, settings);
+  if (e.target.checked) checkState();
+});
+$("#s-met-on-set").onclick = async () => {
+  const v = $("#s-met-on").value;
+  if (!v) return showStateInfo("先選一個日期");
+  try { await mcpCall(statePath(), { met_on: v }); checkState(); }
+  catch (err) { showStateInfo(`沒存到：${err.message}`); }
+};
+$("#s-state-undo").onclick = async () => {
+  try { await mcpCall(`${statePath()}/undo`, {}); showStateInfo("退回上一回合了"); }
+  catch (err) { showStateInfo(err.message.includes("404") ? "沒有可以退回的狀態" : `沒退成：${err.message}`); }
+};
+for (const id of ["#s-mcp-url", "#s-mcp-key"]) $(id).addEventListener("change", () => { readFields(); checkState(); });
 
 function fillFields() {
   for (const [k, el] of Object.entries(fields)) el.type === "checkbox" ? (el.checked = settings[k]) : (el.value = settings[k]);
+  $("#s-state").checked = !!persona().state;
+  $("#s-met-on").value = "";
+  if (persona().state) checkState(); else showStateInfo("");
   showModel();
   showFontState();
   showVoices();
@@ -1797,6 +1999,7 @@ async function exportBackup() {
   try {
     const st = JSON.parse(data.storage[STORE.settings] ?? "{}");
     delete st.apiKey;
+    delete st.mcpKey;
     data.storage[STORE.settings] = JSON.stringify(st);
   } catch {}
   for (const k of Object.keys(data.storage).filter((k) => k.startsWith(STORE.history))) {
@@ -1822,11 +2025,14 @@ async function importBackup(file) {
   if (data?.app !== "claude-notebook" || !data.storage) return alert("這不是這個 App 的備份檔。");
   if (!confirm(`用 ${data.exported?.slice(0, 10) ?? "這份"} 的備份蓋掉現在的資料？現在的對話、記事本和待辦都會被換掉。`)) return;
   const key = settings.apiKey; // 備份裡沒有 key，留著現在的
+  const mcpKey = settings.mcpKey;
   for (const k of Object.keys(localStorage).filter((k) => k.startsWith("grey."))) localStorage.removeItem(k);
   for (const [k, v] of Object.entries(data.storage)) localStorage.setItem(k, v);
   try {
     const st = JSON.parse(localStorage.getItem(STORE.settings) ?? "{}");
-    if (key && !st.apiKey) { st.apiKey = key; localStorage.setItem(STORE.settings, JSON.stringify(st)); }
+    if (key && !st.apiKey) st.apiKey = key;
+    if (mcpKey && !st.mcpKey) st.mcpKey = mcpKey;
+    localStorage.setItem(STORE.settings, JSON.stringify(st));
   } catch {}
   for (const [id, d] of Object.entries(data.photos ?? {})) if (d) await photos.put(id, d).catch(() => {});
   location.reload();
@@ -1864,3 +2070,8 @@ renderAll();
 welcomeBack();
 autosize();
 input.focus({ preventScroll: true });
+
+// Render 免費方案閒置會睡著：打開 App 時先叫醒 MCP，等一下聊天就不用等
+function wakeMcp() { if (stateOn()) getState().catch(() => {}); }
+wakeMcp();
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") wakeMcp(); });

@@ -771,7 +771,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .settings label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--ink-soft); }
 .settings label.check { flex-direction: row; align-items: center; gap: 8px; font-size: 14px; color: var(--ink); }
-.settings input[type="text"], .settings input[type="password"], .settings textarea, .settings select {
+.settings input[type="text"], .settings input[type="password"], .settings input[type="url"], .settings textarea, .settings select {
   width: 100%;
   border: 1px solid var(--rule);
   border-radius: 0;
@@ -837,3 +837,58 @@ button, input, textarea, select { font: inherit; color: inherit; }
   input, select, textarea { font-size: max(16px, 1em) !important; }
 }
 .sig .speak + .speak { margin-left: 4px; font-size: 11px; padding: 0 5px; }
+
+/* 狀態欄：夾在回覆上方的小票卡 */
+.status {
+  width: min(100%, 420px);
+  padding: 10px 14px 12px;
+  background: var(--card);
+  border: 1px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--crimson);
+  transform: rotate(-0.6deg);
+  animation: rise 0.4s ease both;
+}
+.status-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--rule);
+  font-family: var(--caps);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--ink-soft);
+}
+.status-head span:first-child { color: var(--crimson); text-transform: uppercase; }
+.status dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.status dl:empty { display: none; }
+.status dt { color: var(--ink-soft); font-size: 12px; letter-spacing: 0.08em; white-space: nowrap; padding-top: 2px; }
+.status dd { margin: 0; color: var(--ink); word-break: break-word; }
+.status dd.meter { color: var(--crimson); letter-spacing: 0.12em; font-size: 12px; padding-top: 2px; }
+
+/* 心聲：回覆最後一張斜斜的小便條 */
+.inner {
+  width: min(100%, 420px);
+  padding: 8px 14px 10px;
+  background: var(--card-pink);
+  border-left: 3px solid var(--crimson);
+  transform: rotate(0.5deg);
+  animation: rise 0.4s ease both;
+}
+.inner-label {
+  display: block;
+  font-family: var(--caps);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--crimson-ink);
+}
+.inner p { margin: 4px 0 0; font-size: 14px; line-height: 1.75; color: var(--ink-soft); font-style: italic; white-space: pre-wrap; }
